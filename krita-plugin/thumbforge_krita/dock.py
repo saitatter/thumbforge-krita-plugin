@@ -9,6 +9,7 @@ from krita import DockWidget, Krita
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -75,6 +76,10 @@ class ThumbforgeDocker(DockWidget):
 
         export_group = QGroupBox("PNG Export Settings")
         export_layout = QHBoxLayout(export_group)
+        export_layout.addWidget(QLabel("Preset"))
+        self.export_preset_combo = QComboBox()
+        self.export_preset_combo.addItems(["YouTube PNG", "Small PNG", "Transparent PNG"])
+        export_layout.addWidget(self.export_preset_combo)
         export_layout.addWidget(QLabel("Compression"))
         self.compression_spin = QSpinBox()
         self.compression_spin.setRange(0, 9)
@@ -142,6 +147,7 @@ class ThumbforgeDocker(DockWidget):
         self.export_all_button.clicked.connect(self.export_all)
         self.mapping_table.itemChanged.connect(self._mapping_changed)
         self.variables_table.itemChanged.connect(self._variables_changed)
+        self.export_preset_combo.currentTextChanged.connect(self._apply_export_preset)
 
     def _active_template_path(self) -> str:
         doc = Krita.instance().activeDocument()
@@ -509,6 +515,38 @@ class ThumbforgeDocker(DockWidget):
         self.force_srgb_check.setChecked(settings.force_srgb)
         self.save_icc_check.setChecked(settings.save_icc)
         self.interlaced_check.setChecked(settings.interlaced)
+
+    def _apply_export_preset(self, preset: str):
+        if preset == "Small PNG":
+            self._set_png_settings(
+                PngExportSettings(
+                    compression=9,
+                    alpha=False,
+                    force_srgb=True,
+                    save_icc=False,
+                    interlaced=False,
+                )
+            )
+        elif preset == "Transparent PNG":
+            self._set_png_settings(
+                PngExportSettings(
+                    compression=6,
+                    alpha=True,
+                    force_srgb=True,
+                    save_icc=True,
+                    interlaced=False,
+                )
+            )
+        else:
+            self._set_png_settings(
+                PngExportSettings(
+                    compression=6,
+                    alpha=False,
+                    force_srgb=True,
+                    save_icc=True,
+                    interlaced=False,
+                )
+            )
 
     def _format_report(self, report: ExportReport) -> str:
         message = "Exported " + str(report.succeeded) + " thumbnail(s)."
