@@ -106,12 +106,14 @@ class ThumbforgeDocker(DockWidget):
         self.remove_row_button = QPushButton("- Row")
         self.preview_row_button = QPushButton("Preview Row")
         self.export_current_button = QPushButton("Export Current")
+        self.export_selected_button = QPushButton("Export Selected")
         self.export_all_button = QPushButton("Export All")
         row_toolbar.addWidget(self.add_row_button)
         row_toolbar.addWidget(self.remove_row_button)
         row_toolbar.addStretch()
         row_toolbar.addWidget(self.preview_row_button)
         row_toolbar.addWidget(self.export_current_button)
+        row_toolbar.addWidget(self.export_selected_button)
         row_toolbar.addWidget(self.export_all_button)
         layout.addLayout(row_toolbar)
 
@@ -136,6 +138,7 @@ class ThumbforgeDocker(DockWidget):
         self.remove_row_button.clicked.connect(self.remove_selected_row)
         self.preview_row_button.clicked.connect(self.preview_row)
         self.export_current_button.clicked.connect(self.export_current)
+        self.export_selected_button.clicked.connect(self.export_selected)
         self.export_all_button.clicked.connect(self.export_all)
         self.mapping_table.itemChanged.connect(self._mapping_changed)
         self.variables_table.itemChanged.connect(self._variables_changed)
@@ -425,15 +428,27 @@ class ThumbforgeDocker(DockWidget):
         if not self.rows:
             self.status_label.setText("No rows to export.")
             return
+        self._export_rows(list(range(len(self.rows))))
+
+    def export_selected(self):
+        self._sync_rows_from_table()
+        rows = sorted({index.row() for index in self.variables_table.selectedIndexes()})
+        if not rows:
+            self.status_label.setText("No rows selected.")
+            return
+        self._export_rows(rows)
+
+    def _export_rows(self, row_indexes: list[int]):
         output_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if not output_dir:
             return
         try:
             template_path = self._active_template_path()
+            selected_rows = [self.rows[index] for index in row_indexes]
             issues = validate_export_plan(
                 mappings=self.mappings,
                 columns=self.columns,
-                rows=self.rows,
+                rows=selected_rows,
                 output_dir=output_dir,
                 name_pattern=self.name_pattern_edit.text().strip() or "thumb_{episode}",
             )
@@ -443,16 +458,19 @@ class ThumbforgeDocker(DockWidget):
                 return
             report = ExportReport(exported=[], failures=[])
             exporter = self._exporter()
-            progress = QProgressDialog("Exporting thumbnails...", "Cancel", 0, len(self.rows), self)
+            progress = QProgressDialog("Exporting thumbnails...", "Cancel", 0, len(row_indexes), self)
             progress.setWindowTitle("Thumbforge Export")
             progress.setMinimumDuration(0)
-            for index, variables in enumerate(self.rows, start=1):
+            for progress_index, row_index in enumerate(row_indexes, start=1):
                 if progress.wasCanceled():
-                    report.failures.append("Export canceled after row " + str(index - 1) + ".")
+                    report.failures.append("Export canceled after " + str(progress_index - 1) + " row(s).")
                     break
-                progress.setValue(index - 1)
-                progress.setLabelText("Exporting row " + str(index) + " of " + str(len(self.rows)))
+                progress.setValue(progress_index - 1)
+                progress.setLabelText(
+                    "Exporting row " + str(row_index + 1) + " of " + str(len(self.rows))
+                )
                 QApplication.processEvents()
+                variables = self.rows[row_index]
                 output_path = build_output_path(
                     output_dir,
                     self.name_pattern_edit.text().strip() or "thumb_{episode}",
@@ -462,11 +480,13 @@ class ThumbforgeDocker(DockWidget):
                     exporter.export_job(template_path, variables, output_path)
                     report.exported.append(output_path)
                 except Exception as exc:
-                    report.failures.append("Row " + str(index) + ": " + str(exc))
-                self.status_label.setText("Exported " + str(index) + "/" + str(len(self.rows)))
-                progress.setValue(index)
+                    report.failures.append("Row " + str(row_index + 1) + ": " + str(exc))
+                self.status_label.setText(
+                    "Exported " + str(progress_index) + "/" + str(len(row_indexes))
+                )
+                progress.setValue(progress_index)
                 QApplication.processEvents()
-            progress.setValue(len(self.rows))
+            progress.setValue(len(row_indexes))
             QMessageBox.information(self, "Thumbforge", self._format_report(report))
         except Exception as exc:
             self._show_error(exc)
