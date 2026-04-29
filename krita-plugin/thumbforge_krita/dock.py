@@ -128,6 +128,9 @@ class ThumbforgeDocker(DockWidget):
         data_edit_row = QHBoxLayout()
         self.add_row_button = QPushButton("+ Row")
         self.remove_row_button = QPushButton("- Row")
+        self.duplicate_row_button = QPushButton("Duplicate Row")
+        self.move_row_up_button = QPushButton("Move Up")
+        self.move_row_down_button = QPushButton("Move Down")
         self.add_column_button = QPushButton("+ Column")
         self.remove_column_button = QPushButton("- Column")
         self.generate_rows_button = QPushButton("Generate Rows")
@@ -135,6 +138,9 @@ class ThumbforgeDocker(DockWidget):
         self.paste_rows_button = QPushButton("Paste Rows")
         data_edit_row.addWidget(self.add_row_button)
         data_edit_row.addWidget(self.remove_row_button)
+        data_edit_row.addWidget(self.duplicate_row_button)
+        data_edit_row.addWidget(self.move_row_up_button)
+        data_edit_row.addWidget(self.move_row_down_button)
         data_edit_row.addWidget(self.add_column_button)
         data_edit_row.addWidget(self.remove_column_button)
         data_edit_row.addWidget(self.generate_rows_button)
@@ -248,6 +254,9 @@ class ThumbforgeDocker(DockWidget):
         self.export_csv_button.setToolTip("Export the current variable table to CSV.")
         self.add_row_button.setToolTip("Add an empty variable row.")
         self.remove_row_button.setToolTip("Remove the selected variable row.")
+        self.duplicate_row_button.setToolTip("Duplicate the selected variable row below the original.")
+        self.move_row_up_button.setToolTip("Move the selected variable row one position up.")
+        self.move_row_down_button.setToolTip("Move the selected variable row one position down.")
         self.add_column_button.setToolTip("Add a new variable column.")
         self.remove_column_button.setToolTip("Remove the selected variable column.")
         self.generate_rows_button.setToolTip("Generate numbered rows and fill text_* columns with #1, #2, and so on.")
@@ -284,6 +293,9 @@ class ThumbforgeDocker(DockWidget):
         self.export_csv_button.clicked.connect(self.export_csv)
         self.add_row_button.clicked.connect(self.add_row)
         self.remove_row_button.clicked.connect(self.remove_selected_row)
+        self.duplicate_row_button.clicked.connect(self.duplicate_selected_row)
+        self.move_row_up_button.clicked.connect(self.move_selected_row_up)
+        self.move_row_down_button.clicked.connect(self.move_selected_row_down)
         self.add_column_button.clicked.connect(self.add_column)
         self.remove_column_button.clicked.connect(self.remove_selected_column)
         self.generate_rows_button.clicked.connect(self.generate_rows)
@@ -547,6 +559,40 @@ class ThumbforgeDocker(DockWidget):
         if selected < len(self.rows):
             self.rows.pop(selected)
             self._refresh_variables_table()
+            if self.rows:
+                self.variables_table.selectRow(min(selected, len(self.rows) - 1))
+
+    def duplicate_selected_row(self):
+        selected = self.variables_table.currentRow()
+        if selected < 0:
+            self.status_label.setText("No row selected.")
+            return
+        self._sync_rows_from_table()
+        if selected >= len(self.rows):
+            return
+        self.rows.insert(selected + 1, dict(self.rows[selected]))
+        self._refresh_variables_table()
+        self.variables_table.selectRow(selected + 1)
+        self.status_label.setText("Duplicated row " + str(selected + 1) + ".")
+
+    def move_selected_row_up(self):
+        self._move_selected_row(-1)
+
+    def move_selected_row_down(self):
+        self._move_selected_row(1)
+
+    def _move_selected_row(self, offset: int):
+        selected = self.variables_table.currentRow()
+        if selected < 0:
+            self.status_label.setText("No row selected.")
+            return
+        target = selected + offset
+        self._sync_rows_from_table()
+        if target < 0 or target >= len(self.rows):
+            return
+        self.rows[selected], self.rows[target] = self.rows[target], self.rows[selected]
+        self._refresh_variables_table()
+        self.variables_table.selectRow(target)
 
     def add_column(self):
         name, accepted = QInputDialog.getText(self, "Add Column", "Column name")
