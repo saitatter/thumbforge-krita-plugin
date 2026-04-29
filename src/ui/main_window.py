@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -54,6 +55,10 @@ class MainWindow(QMainWindow):
         self.btn_export_one = QPushButton("Export Current")
         toolbar.addWidget(self.btn_open_bg)
         toolbar.addWidget(self.btn_open_kra)
+        toolbar.addWidget(QLabel("Filename"))
+        self.name_pattern_edit = QLineEdit(self.project.name_pattern)
+        self.name_pattern_edit.setMinimumWidth(180)
+        toolbar.addWidget(self.name_pattern_edit)
         toolbar.addStretch()
         toolbar.addWidget(self.btn_export_one)
         toolbar.addWidget(self.btn_export)
@@ -96,6 +101,7 @@ class MainWindow(QMainWindow):
         self.variables_table.selectionChanged.connect(self._on_row_selected)
         self.variables_table.variablesEdited.connect(self._on_row_selected)
         self.mapping_table.itemChanged.connect(self._on_mapping_changed)
+        self.name_pattern_edit.editingFinished.connect(self._on_name_pattern_changed)
 
     def _open_background(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -181,6 +187,12 @@ class MainWindow(QMainWindow):
             if variable_name not in self.project.variable_columns:
                 self.project.variable_columns.append(variable_name)
                 self.variables_table.refresh_from_project()
+
+    def _on_name_pattern_changed(self):
+        pattern = self.name_pattern_edit.text().strip()
+        self.project.name_pattern = pattern or "thumb_{episode}"
+        if not pattern:
+            self.name_pattern_edit.setText(self.project.name_pattern)
 
     def _export_current(self):
         row = self.variables_table.current_variables()
