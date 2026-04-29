@@ -143,3 +143,10 @@ def test_log_path_uses_krita_folder(monkeypatch, tmp_path):
     path = logging_utils.log_path()
 
     assert path.endswith("krita\\thumbforge.log") or path.endswith("krita/thumbforge.log")
+
+
+def test_version_metadata_exists():
+    version = _load_plugin_module("version")
+
+    assert version.VERSION
+    assert version.BUILD

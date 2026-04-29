@@ -37,6 +37,7 @@ from .logging_utils import log, log_exception, log_path
 from .project_store import load_project_from_document, save_project_to_document
 from .text_replace import plain_text
 from .validation import build_output_paths, validate_export_plan
+from .version import BUILD, VERSION
 
 
 class ThumbforgeDocker(DockWidget):
@@ -167,6 +168,8 @@ class ThumbforgeDocker(DockWidget):
 
         self.status_label = QLabel("Open a saved .kra template, then detect text layers.")
         layout.addWidget(self.status_label)
+        self.version_label = QLabel("Thumbforge " + VERSION + " (" + BUILD + ")")
+        layout.addWidget(self.version_label)
         self.log_label = QLabel("Log: " + log_path())
         layout.addWidget(self.log_label)
 
