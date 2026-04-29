@@ -28,6 +28,8 @@ def write_variable_kra(
     with zipfile.ZipFile(template_path, "r") as source:
         with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as target:
             for info in source.infolist():
+                if info.filename in {"mergedimage.png", "preview.png"}:
+                    continue
                 data = source.read(info.filename)
                 if info.filename in replacements_by_svg:
                     data = _replace_svg_text(

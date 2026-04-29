@@ -33,12 +33,14 @@ class BatchExportReport:
 
 def find_krita_executable() -> str | None:
     """Return a Krita executable path if one is discoverable."""
-    for name in ("krita", "krita.exe"):
+    for name in ("krita.com", "krita", "krita.exe"):
         found = shutil.which(name)
         if found:
             return found
     common_paths = [
+        Path("C:/Program Files/Krita (x64)/bin/krita.com"),
         Path("C:/Program Files/Krita (x64)/bin/krita.exe"),
+        Path("C:/Program Files/Krita/bin/krita.com"),
         Path("C:/Program Files/Krita/bin/krita.exe"),
     ]
     for path in common_paths:
@@ -300,43 +302,53 @@ def write_log(message):
         pass
 
 
-with open(MANIFEST_PATH, "r", encoding="utf-8") as handle:
-    manifest = json.load(handle)
+LOG_PATH = ""
 
-LOG_PATH = manifest.get("log", "")
-app = Krita.instance()
 
-try:
-    for job in manifest["jobs"]:
-        write_log("Opening " + job["kra"])
-        doc = app.openDocument(job["kra"])
-        if doc is None:
-            raise RuntimeError("Krita could not open " + job["kra"])
-        try:
-            doc.setBatchmode(True)
-        except Exception:
-            pass
-        try:
-            doc.waitForDone()
-        except Exception:
-            pass
-        write_log("Exporting " + job["output"])
-        ok = doc.exportImage(job["output"], InfoObject())
-        try:
-            doc.waitForDone()
-        except Exception:
-            pass
-        if ok is False:
-            raise RuntimeError("Krita exportImage returned false for " + job["output"])
-        doc.close()
-    write_log("Done")
-except Exception:
-    write_log(traceback.format_exc())
-    raise
-finally:
-    qt_app = QApplication.instance()
-    if qt_app is not None:
-        qt_app.quit()
-    else:
-        sys.exit(0)
+def __main__(*args):
+    global LOG_PATH
+    with open(MANIFEST_PATH, "r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+
+    LOG_PATH = manifest.get("log", "")
+    app = Krita.instance()
+
+    try:
+        for job in manifest["jobs"]:
+            write_log("Opening " + job["kra"])
+            doc = app.openDocument(job["kra"])
+            if doc is None:
+                raise RuntimeError("Krita could not open " + job["kra"])
+            try:
+                doc.setBatchmode(True)
+            except Exception:
+                pass
+            try:
+                doc.waitForDone()
+            except Exception:
+                pass
+            try:
+                doc.refreshProjection()
+                doc.waitForDone()
+            except Exception:
+                pass
+            write_log("Exporting " + job["output"])
+            ok = doc.exportImage(job["output"], InfoObject())
+            try:
+                doc.waitForDone()
+            except Exception:
+                pass
+            if ok is False:
+                raise RuntimeError("Krita exportImage returned false for " + job["output"])
+            doc.close()
+        write_log("Done")
+    except Exception:
+        write_log(traceback.format_exc())
+        raise
+    finally:
+        qt_app = QApplication.instance()
+        if qt_app is not None:
+            qt_app.quit()
+        else:
+            sys.exit(0)
 '''

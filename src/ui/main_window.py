@@ -75,15 +75,20 @@ class ExportWorker(QObject):
 
     def _export_current(self) -> str:
         if self.kra_template_path and self.text_layer_mappings:
-            from core.krita_exporter import export_kra_jobs_with_script
+            import tempfile
 
-            report = export_kra_jobs_with_script(
-                self.kra_template_path,
-                self.text_layer_mappings,
-                [(self.variables, self.output_path)],
-            )
-            if report.failures:
-                raise RuntimeError("\n".join(report.failures))
+            from core.kra_writer import write_variable_kra
+            from core.krita_exporter import export_kra_to_image
+
+            with tempfile.TemporaryDirectory(prefix="thumbforge_kra_") as tmp:
+                kra_path = Path(tmp) / "current.kra"
+                write_variable_kra(
+                    self.kra_template_path,
+                    kra_path,
+                    self.text_layer_mappings,
+                    self.variables,
+                )
+                export_kra_to_image(kra_path, self.output_path)
             return f"Exported: {self.output_path}"
 
         from core.renderer import export_thumbnail, render_thumbnail
@@ -94,9 +99,9 @@ class ExportWorker(QObject):
 
     def _export_batch(self) -> str:
         if self.kra_template_path and self.text_layer_mappings:
-            from core.krita_exporter import batch_export_kra_script_report
+            from core.krita_exporter import batch_export_kra_report
 
-            report = batch_export_kra_script_report(
+            report = batch_export_kra_report(
                 self.kra_template_path,
                 self.text_layer_mappings,
                 self.rows,

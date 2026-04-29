@@ -22,6 +22,8 @@ class KraWriterTests(unittest.TestCase):
             svg_path = "layers/text1/content.svg"
             with zipfile.ZipFile(source, "w") as zf:
                 zf.writestr("maindoc.xml", "<DOC />")
+                zf.writestr("mergedimage.png", b"stale")
+                zf.writestr("preview.png", b"stale")
                 zf.writestr(
                     svg_path,
                     """
@@ -46,6 +48,8 @@ class KraWriterTests(unittest.TestCase):
             )
 
             with zipfile.ZipFile(output, "r") as zf:
+                self.assertNotIn("mergedimage.png", zf.namelist())
+                self.assertNotIn("preview.png", zf.namelist())
                 root = etree.fromstring(zf.read(svg_path))
                 text = "".join(root.xpath(".//*[local-name()='text']")[0].itertext()).strip()
 
