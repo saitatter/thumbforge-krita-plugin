@@ -20,10 +20,12 @@ class VariablesTable(QWidget):
     """Table where each row is a set of variables for one thumbnail."""
 
     selectionChanged = Signal(dict)  # emits current row's variables
+    variablesEdited = Signal(dict)  # emits edited row's variables
 
     def __init__(self, project: ThumbforgeProject, parent=None):
         super().__init__(parent)
         self.project = project
+        self._loading = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -65,6 +67,7 @@ class VariablesTable(QWidget):
         self.btn_import_csv.clicked.connect(self._import_csv)
         self.btn_export_csv.clicked.connect(self._export_csv)
         self.table.currentCellChanged.connect(self._on_selection)
+        self.table.itemChanged.connect(self._on_item_changed)
 
     def refresh_from_project(self):
         self.table.clear()
@@ -74,12 +77,14 @@ class VariablesTable(QWidget):
         self._load_rows()
 
     def _load_rows(self):
+        self._loading = True
         for row_data in self.project.rows:
             row_idx = self.table.rowCount()
             self.table.insertRow(row_idx)
             for col_idx, col_name in enumerate(self.project.variable_columns):
                 item = QTableWidgetItem(row_data.get(col_name, ""))
                 self.table.setItem(row_idx, col_idx, item)
+        self._loading = False
 
     def _add_row(self):
         row_idx = self.table.rowCount()
@@ -146,6 +151,13 @@ class VariablesTable(QWidget):
         variables = self._row_to_dict(row)
         if variables is not None:
             self.selectionChanged.emit(variables)
+
+    def _on_item_changed(self, item: QTableWidgetItem):
+        if self._loading:
+            return
+        variables = self._row_to_dict(item.row())
+        if variables is not None:
+            self.variablesEdited.emit(variables)
 
     def _row_to_dict(self, row: int) -> dict[str, str] | None:
         if row < 0 or row >= self.table.rowCount():

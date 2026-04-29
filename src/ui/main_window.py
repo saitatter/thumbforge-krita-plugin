@@ -94,6 +94,7 @@ class MainWindow(QMainWindow):
         self.btn_export.clicked.connect(self._export_all)
         self.btn_export_one.clicked.connect(self._export_current)
         self.variables_table.selectionChanged.connect(self._on_row_selected)
+        self.variables_table.variablesEdited.connect(self._on_row_selected)
         self.mapping_table.itemChanged.connect(self._on_mapping_changed)
 
     def _open_background(self):
