@@ -7,6 +7,7 @@ import tempfile
 
 from krita import DockWidget, Krita
 from PyQt5.QtGui import QPixmap
+from PyQt5.QtGui import QBrush, QColor
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -136,6 +137,7 @@ class ThumbforgeDocker(DockWidget):
         self.add_column_button = QPushButton("+ Column")
         self.remove_column_button = QPushButton("- Column")
         self.generate_rows_button = QPushButton("Generate Rows")
+        self.validate_rows_button = QPushButton("Validate Rows")
         self.paste_rows_button = QPushButton("Paste Rows")
         self.preview_row_button = QPushButton("Preview Row")
         self.export_current_button = QPushButton("Export Current")
@@ -146,6 +148,7 @@ class ThumbforgeDocker(DockWidget):
         row_toolbar.addWidget(self.add_column_button)
         row_toolbar.addWidget(self.remove_column_button)
         row_toolbar.addWidget(self.generate_rows_button)
+        row_toolbar.addWidget(self.validate_rows_button)
         row_toolbar.addWidget(self.paste_rows_button)
         row_toolbar.addStretch()
         row_toolbar.addWidget(self.preview_row_button)
@@ -176,6 +179,7 @@ class ThumbforgeDocker(DockWidget):
         self.add_column_button.clicked.connect(self.add_column)
         self.remove_column_button.clicked.connect(self.remove_selected_column)
         self.generate_rows_button.clicked.connect(self.generate_rows)
+        self.validate_rows_button.clicked.connect(self.validate_rows)
         self.paste_rows_button.clicked.connect(self.paste_rows)
         self.preview_row_button.clicked.connect(self.preview_row)
         self.export_current_button.clicked.connect(self.export_current)
@@ -313,6 +317,38 @@ class ThumbforgeDocker(DockWidget):
                     self.variables_table.setItem(row, column, QTableWidgetItem(row_data.get(name, "")))
         finally:
             self.variables_table.blockSignals(False)
+
+    def validate_rows(self):
+        self._sync_rows_from_table()
+        required = [mapping.variable_name for mapping in self.mappings if mapping.variable_name]
+        issues = 0
+        self._clear_variable_highlights()
+        for row_index, row in enumerate(self.rows):
+            for variable in required:
+                if not row.get(variable, "").strip():
+                    issues += 1
+                    self._highlight_cell(row_index, variable)
+        if issues:
+            self.status_label.setText("Found " + str(issues) + " missing mapped value(s).")
+        else:
+            self.status_label.setText("Rows look valid.")
+
+    def _clear_variable_highlights(self):
+        for row_index in range(self.variables_table.rowCount()):
+            for column_index in range(self.variables_table.columnCount()):
+                item = self.variables_table.item(row_index, column_index)
+                if item is not None:
+                    item.setBackground(QBrush())
+
+    def _highlight_cell(self, row_index: int, variable: str):
+        if variable not in self.columns:
+            return
+        column_index = self.columns.index(variable)
+        item = self.variables_table.item(row_index, column_index)
+        if item is None:
+            item = QTableWidgetItem("")
+            self.variables_table.setItem(row_index, column_index, item)
+        item.setBackground(QBrush(QColor("#ffd6d6")))
 
     def _mapping_changed(self, item):
         row = item.row()
