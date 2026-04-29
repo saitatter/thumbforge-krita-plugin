@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import os
-from collections import defaultdict
-from dataclasses import dataclass
 
-from krita import DockWidget, InfoObject, Krita
+from krita import DockWidget, Krita
 from PyQt5.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -25,21 +23,9 @@ from PyQt5.QtWidgets import (
 )
 
 from .csv_io import read_variable_csv, write_variable_csv
-from .text_replace import plain_text, replace_text_shape
-
-
-@dataclass
-class TextMapping:
-    layer_name: str
-    source_text: str
-    variable_name: str
-
-
-def substitute(text: str, variables: dict[str, str]) -> str:
-    result = text
-    for key, value in variables.items():
-        result = result.replace("{" + key + "}", str(value))
-    return result
+from .exporter import KritaTemplateExporter
+from .models import PngExportSettings, TextMapping, ensure_png_path, substitute
+from .text_replace import plain_text
 
 
 class ThumbforgeDocker(DockWidget):
@@ -286,9 +272,9 @@ class ThumbforgeDocker(DockWidget):
         path, _ = QFileDialog.getSaveFileName(self, "Export Current", "thumbnail.png", "PNG (*.png)")
         if not path:
             return
-        path = self._ensure_png_path(path)
+        path = ensure_png_path(path)
         try:
-            self._export_job(self._active_template_path(), self.rows[row], path)
+            self._exporter().export_job(self._active_template_path(), self.rows[row], path)
             self.status_label.setText("Exported " + os.path.basename(path))
         except Exception as exc:
             self._show_error(exc)
@@ -305,92 +291,24 @@ class ThumbforgeDocker(DockWidget):
             template_path = self._active_template_path()
             for index, variables in enumerate(self.rows, start=1):
                 name = substitute(self.name_pattern_edit.text().strip() or "thumb_{episode}", variables)
-                output_path = self._ensure_png_path(os.path.join(output_dir, name))
-                self._export_job(template_path, variables, output_path)
+                output_path = ensure_png_path(os.path.join(output_dir, name))
+                self._exporter().export_job(template_path, variables, output_path)
                 self.status_label.setText("Exported " + str(index) + "/" + str(len(self.rows)))
             QMessageBox.information(self, "Thumbforge", "Exported " + str(len(self.rows)) + " thumbnail(s).")
         except Exception as exc:
             self._show_error(exc)
 
-    def _export_job(self, template_path: str, variables: dict[str, str], output_path: str):
-        app = Krita.instance()
-        old_batchmode = False
-        doc = Krita.instance().openDocument(template_path)
-        if doc is None:
-            raise RuntimeError("Krita could not open " + template_path)
-        try:
-            doc.waitForDone()
-        except Exception:
-            pass
-        try:
-            self._apply_variables(doc, variables)
-            doc.refreshProjection()
-            doc.waitForDone()
-            doc.flatten()
-            doc.waitForDone()
-            doc.refreshProjection()
-            doc.waitForDone()
-            old_batchmode = app.batchmode()
-            app.setBatchmode(True)
-            try:
-                doc.setBatchmode(True)
-            except Exception:
-                pass
-            ok = doc.exportImage(output_path, self._png_export_options())
-            try:
-                doc.waitForDone()
-            except Exception:
-                pass
-            if ok is False:
-                raise RuntimeError("Krita export failed for " + output_path)
-        finally:
-            try:
-                app.setBatchmode(old_batchmode)
-            except Exception:
-                pass
-            try:
-                doc.setModified(False)
-            except Exception:
-                pass
-            doc.close()
+    def _exporter(self) -> KritaTemplateExporter:
+        return KritaTemplateExporter(self.mappings, self._png_settings())
 
-    def _ensure_png_path(self, path: str) -> str:
-        if os.path.splitext(path)[1]:
-            return path
-        return path + ".png"
-
-    def _png_export_options(self):
-        options = InfoObject()
-        options.setProperty("alpha", self.alpha_check.isChecked())
-        options.setProperty("compression", self.compression_spin.value())
-        options.setProperty("forceSRGB", self.force_srgb_check.isChecked())
-        options.setProperty("indexed", False)
-        options.setProperty("interlaced", self.interlaced_check.isChecked())
-        options.setProperty("saveSRGBProfile", self.save_icc_check.isChecked())
-        return options
-
-    def _apply_variables(self, doc, variables: dict[str, str]):
-        mappings_by_layer = defaultdict(list)
-        for mapping in self.mappings:
-            mappings_by_layer[mapping.layer_name].append(mapping)
-        for layer_name, mappings in mappings_by_layer.items():
-            node = doc.nodeByName(layer_name)
-            if node is None:
-                raise RuntimeError("Layer not found: " + layer_name)
-            svg = node.toSvg()
-            matched_any = False
-            for mapping in mappings:
-                value = variables.get(mapping.variable_name, "")
-                svg, matched = replace_text_shape(svg, mapping.source_text, value)
-                matched_any = matched_any or matched
-            if not matched_any:
-                raise RuntimeError("No matching text shape found in layer: " + layer_name)
-            for shape in list(node.shapes()):
-                shape.setVisible(False)
-                shape.update()
-            added = node.addShapesFromSvg(svg)
-            if not added:
-                raise RuntimeError("Krita did not add replacement text for layer: " + layer_name)
+    def _png_settings(self) -> PngExportSettings:
+        return PngExportSettings(
+            compression=self.compression_spin.value(),
+            alpha=self.alpha_check.isChecked(),
+            force_srgb=self.force_srgb_check.isChecked(),
+            save_icc=self.save_icc_check.isChecked(),
+            interlaced=self.interlaced_check.isChecked(),
+        )
 
     def _show_error(self, exc: Exception):
         self.status_label.setText("Error: " + str(exc))
