@@ -33,6 +33,7 @@ from PyQt5.QtWidgets import (
 from .csv_io import read_variable_csv, write_variable_csv
 from .exporter import KritaTemplateExporter
 from .models import ExportReport, PngExportSettings, TextMapping, ensure_export_path
+from .logging_utils import log, log_exception, log_path
 from .project_store import load_project_from_document, save_project_to_document
 from .text_replace import plain_text
 from .validation import build_output_paths, validate_export_plan
@@ -166,6 +167,8 @@ class ThumbforgeDocker(DockWidget):
 
         self.status_label = QLabel("Open a saved .kra template, then detect text layers.")
         layout.addWidget(self.status_label)
+        self.log_label = QLabel("Log: " + log_path())
+        layout.addWidget(self.log_label)
 
         self.setWidget(root)
 
@@ -771,5 +774,6 @@ class ThumbforgeDocker(DockWidget):
         dialog.exec_()
 
     def _show_error(self, exc: Exception):
+        log_exception("Thumbforge error", exc)
         self.status_label.setText("Error: " + str(exc))
         QMessageBox.warning(self, "Thumbforge", str(exc))

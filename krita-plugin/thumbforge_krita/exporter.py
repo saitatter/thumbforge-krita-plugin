@@ -8,6 +8,7 @@ from krita import InfoObject, Krita
 
 from .models import PngExportSettings, TextMapping
 from .text_replace import replace_text_shape
+from .logging_utils import log
 
 
 class KritaTemplateExporter:
@@ -16,6 +17,7 @@ class KritaTemplateExporter:
         self.settings = settings
 
     def export_job(self, template_path: str, variables: dict[str, str], output_path: str) -> None:
+        log("Exporting " + output_path + " from " + template_path)
         app = Krita.instance()
         old_batchmode = False
         doc = app.openDocument(template_path)
@@ -49,6 +51,7 @@ class KritaTemplateExporter:
             self._wait(doc)
             if ok is False:
                 raise RuntimeError("Krita export failed for " + output_path)
+            log("Exported " + output_path)
         finally:
             try:
                 app.setBatchmode(old_batchmode)

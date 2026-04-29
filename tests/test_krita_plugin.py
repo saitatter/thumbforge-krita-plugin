@@ -134,3 +134,12 @@ def test_parse_clipboard_table_with_header():
 
     assert columns == ["episode", "title"]
     assert rows == [{"episode": "1", "title": "Hello"}]
+
+
+def test_log_path_uses_krita_folder(monkeypatch, tmp_path):
+    logging_utils = _load_plugin_module("logging_utils")
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+
+    path = logging_utils.log_path()
+
+    assert path.endswith("krita\\thumbforge.log") or path.endswith("krita/thumbforge.log")
