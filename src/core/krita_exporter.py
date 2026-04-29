@@ -47,6 +47,24 @@ def find_krita_executable() -> str | None:
     return None
 
 
+def find_krita_runner() -> str | None:
+    """Return a kritarunner executable path if one is discoverable."""
+    for name in ("kritarunner", "kritarunner.exe", "kritarunner.com"):
+        found = shutil.which(name)
+        if found:
+            return found
+    common_paths = [
+        Path("C:/Program Files/Krita (x64)/bin/kritarunner.exe"),
+        Path("C:/Program Files/Krita (x64)/bin/kritarunner.com"),
+        Path("C:/Program Files/Krita/bin/kritarunner.exe"),
+        Path("C:/Program Files/Krita/bin/kritarunner.com"),
+    ]
+    for path in common_paths:
+        if path.is_file():
+            return str(path)
+    return None
+
+
 def export_kra_to_image(
     kra_path: str | Path,
     output_path: str | Path,
@@ -161,9 +179,9 @@ def export_kra_jobs_with_script(
     timeout_seconds: int = 300,
 ) -> BatchExportReport:
     """Apply variables and export via one controlled Krita Python script run."""
-    executable = krita_executable or find_krita_executable()
+    executable = krita_executable or find_krita_runner() or find_krita_executable()
     if not executable:
-        raise KritaExportError("Krita executable not found.")
+        raise KritaExportError("Krita runner/executable not found.")
 
     exported: list[Path] = []
     failures: list[str] = []
@@ -202,11 +220,10 @@ def export_kra_jobs_with_script(
             encoding="utf-8",
         )
 
-        command = [
-            executable,
-            "--nosplash",
-            f"-scriptFile={script_path}",
-        ]
+        if Path(executable).name.lower().startswith("kritarunner"):
+            command = [executable, "-s", str(script_path.with_suffix(""))]
+        else:
+            command = [executable, "--nosplash", f"-scriptFile={script_path}"]
         try:
             completed = subprocess.run(
                 command,

@@ -125,13 +125,14 @@ class KritaExporterTests(unittest.TestCase):
                     )
                 ],
                 [({"title": "New"}, output)],
-                krita_executable="krita.exe",
+                krita_executable="kritarunner.exe",
             )
 
             args = run.call_args.args[0]
-            self.assertEqual(args[0], "krita.exe")
-            self.assertIn("--nosplash", args)
-            self.assertTrue(any(str(arg).startswith("-scriptFile=") for arg in args))
+            self.assertEqual(args[0], "kritarunner.exe")
+            self.assertIn("-s", args)
+            script_arg = args[args.index("-s") + 1]
+            self.assertFalse(str(script_arg).endswith(".py"))
             self.assertEqual(run.call_args.kwargs["timeout"], 300)
             self.assertEqual(report.succeeded, 0)
             self.assertEqual(report.failed, 1)
