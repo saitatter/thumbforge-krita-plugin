@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -211,20 +212,29 @@ def export_kra_jobs_with_script(
             return BatchExportReport(exported=[], failures=failures)
 
         manifest_path = tmp_dir / "jobs.json"
-        script_path = tmp_dir / "thumbforge_krita_export.py"
         log_path = tmp_dir / "krita_export.log"
         manifest_path.write_text(
             json.dumps({"jobs": manifest_jobs, "log": str(log_path)}, indent=2),
             encoding="utf-8",
         )
-        script_path.write_text(
-            _krita_export_script(manifest_path),
-            encoding="utf-8",
-        )
 
         if Path(executable).name.lower().startswith("kritarunner"):
-            command = [executable, "-s", str(script_path.with_suffix(""))]
+            module_name = "thumbforge_krita_export_runner"
+            script_path = _write_kritarunner_module(module_name)
+            command = [
+                executable,
+                "-s",
+                module_name,
+                "-f",
+                "run",
+                str(manifest_path),
+            ]
         else:
+            script_path = tmp_dir / "thumbforge_krita_export.py"
+            script_path.write_text(
+                _krita_export_script(),
+                encoding="utf-8",
+            )
             command = [executable, "--nosplash", f"-scriptFile={script_path}"]
         try:
             completed = subprocess.run(
@@ -281,8 +291,16 @@ def batch_export_kra_script_report(
     )
 
 
-def _krita_export_script(manifest_path: Path) -> str:
-    manifest_literal = str(manifest_path).replace("\\", "\\\\")
+def _write_kritarunner_module(module_name: str) -> Path:
+    appdata = Path(os.environ.get("APPDATA", tempfile.gettempdir()))
+    module_dir = appdata / "kritarunner" / "krita" / "pykrita"
+    module_dir.mkdir(parents=True, exist_ok=True)
+    module_path = module_dir / f"{module_name}.py"
+    module_path.write_text(_krita_export_script(), encoding="utf-8")
+    return module_path
+
+
+def _krita_export_script() -> str:
     return f'''
 import json
 import sys
@@ -290,8 +308,6 @@ import traceback
 
 from krita import Krita, InfoObject
 from PyQt5.QtWidgets import QApplication
-
-MANIFEST_PATH = r"{manifest_literal}"
 
 
 def write_log(message):
@@ -305,9 +321,13 @@ def write_log(message):
 LOG_PATH = ""
 
 
-def __main__(*args):
+def run(*args):
     global LOG_PATH
-    with open(MANIFEST_PATH, "r", encoding="utf-8") as handle:
+    argv = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
+    if not argv:
+        raise RuntimeError("No Thumbforge manifest path supplied.")
+    manifest_path = argv[0]
+    with open(manifest_path, "r", encoding="utf-8") as handle:
         manifest = json.load(handle)
 
     LOG_PATH = manifest.get("log", "")
@@ -351,4 +371,8 @@ def __main__(*args):
             qt_app.quit()
         else:
             sys.exit(0)
+
+
+def __main__(*args):
+    return run(*args)
 '''
