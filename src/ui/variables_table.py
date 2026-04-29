@@ -53,6 +53,13 @@ class VariablesTable(QWidget):
         self.btn_add_col.clicked.connect(self._add_column)
         self.table.currentCellChanged.connect(self._on_selection)
 
+    def refresh_from_project(self):
+        self.table.clear()
+        self.table.setRowCount(0)
+        self.table.setColumnCount(len(self.project.variable_columns))
+        self.table.setHorizontalHeaderLabels(self.project.variable_columns)
+        self._load_rows()
+
     def _load_rows(self):
         for row_data in self.project.rows:
             row_idx = self.table.rowCount()

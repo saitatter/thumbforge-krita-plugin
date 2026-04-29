@@ -7,12 +7,15 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
+    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
     QPushButton,
     QSplitter,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -32,6 +35,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 600)
 
         self.project = ThumbforgeProject()
+        self._loading_mappings = False
 
         self._build_ui()
         self._connect_signals()
@@ -61,8 +65,21 @@ class MainWindow(QMainWindow):
         self.preview = PreviewWidget()
         splitter.addWidget(self.preview)
 
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+
+        mapping_group = QGroupBox("Text Layer Mappings")
+        mapping_layout = QVBoxLayout(mapping_group)
+        self.mapping_table = QTableWidget(0, 3)
+        self.mapping_table.setHorizontalHeaderLabels(["Layer", "Source Text", "Variable"])
+        self.mapping_table.horizontalHeader().setStretchLastSection(True)
+        mapping_layout.addWidget(self.mapping_table)
+        right_layout.addWidget(mapping_group, stretch=1)
+
         self.variables_table = VariablesTable(self.project)
-        splitter.addWidget(self.variables_table)
+        right_layout.addWidget(self.variables_table, stretch=3)
+        splitter.addWidget(right_panel)
 
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 1)
@@ -77,6 +94,7 @@ class MainWindow(QMainWindow):
         self.btn_export.clicked.connect(self._export_all)
         self.btn_export_one.clicked.connect(self._export_current)
         self.variables_table.selectionChanged.connect(self._on_row_selected)
+        self.mapping_table.itemChanged.connect(self._on_mapping_changed)
 
     def _open_background(self):
         path, _ = QFileDialog.getOpenFileName(
@@ -95,10 +113,25 @@ class MainWindow(QMainWindow):
         )
         if path:
             try:
-                from core.kra_parser import KraTemplate
+                from core.kra_parser import KraTemplate, list_text_layer_details
                 template = KraTemplate.load(path)
+                self.project.kra_template_path = path
                 self.project.template_config.width = template.width
                 self.project.template_config.height = template.height
+                self.project.text_layer_mappings.clear()
+                details = list_text_layer_details(template)
+                for index, detail in enumerate(details, start=1):
+                    variable_name = f"text_{index}"
+                    if variable_name not in self.project.variable_columns:
+                        self.project.variable_columns.append(variable_name)
+                    self.project.upsert_text_layer_mapping(
+                        layer_name=detail.layer.name,
+                        variable_name=variable_name,
+                        svg_path=detail.svg_path,
+                        source_text=detail.text,
+                    )
+                self._refresh_mapping_table()
+                self.variables_table.refresh_from_project()
                 if template.merged_preview:
                     self.preview.set_image(template.merged_preview)
                 self.statusBar().showMessage(f"Template: {template.name} ({template.width}x{template.height})")
@@ -116,6 +149,37 @@ class MainWindow(QMainWindow):
             self.preview.set_image(image)
         except Exception as exc:
             logger.error("Preview render failed: %s", exc)
+
+    def _refresh_mapping_table(self):
+        self._loading_mappings = True
+        try:
+            self.mapping_table.setRowCount(0)
+            for mapping in self.project.text_layer_mappings:
+                row = self.mapping_table.rowCount()
+                self.mapping_table.insertRow(row)
+                layer_item = QTableWidgetItem(mapping.layer_name)
+                layer_item.setFlags(layer_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                source_item = QTableWidgetItem(mapping.source_text)
+                source_item.setFlags(source_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+                variable_item = QTableWidgetItem(mapping.variable_name)
+                self.mapping_table.setItem(row, 0, layer_item)
+                self.mapping_table.setItem(row, 1, source_item)
+                self.mapping_table.setItem(row, 2, variable_item)
+        finally:
+            self._loading_mappings = False
+
+    def _on_mapping_changed(self, item: QTableWidgetItem):
+        if self._loading_mappings or item.column() != 2:
+            return
+        row = item.row()
+        if 0 <= row < len(self.project.text_layer_mappings):
+            variable_name = item.text().strip()
+            if not variable_name:
+                return
+            self.project.text_layer_mappings[row].variable_name = variable_name
+            if variable_name not in self.project.variable_columns:
+                self.project.variable_columns.append(variable_name)
+                self.variables_table.refresh_from_project()
 
     def _export_current(self):
         row = self.variables_table.current_variables()
