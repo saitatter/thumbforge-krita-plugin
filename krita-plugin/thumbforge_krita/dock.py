@@ -54,11 +54,13 @@ class ThumbforgeDocker(DockWidget):
 
         toolbar = QHBoxLayout()
         self.detect_button = QPushButton("Detect Text")
+        self.refresh_button = QPushButton("Refresh Text")
         self.load_setup_button = QPushButton("Load Setup")
         self.save_setup_button = QPushButton("Save Setup")
         self.import_button = QPushButton("Import CSV")
         self.export_csv_button = QPushButton("Export CSV")
         toolbar.addWidget(self.detect_button)
+        toolbar.addWidget(self.refresh_button)
         toolbar.addWidget(self.load_setup_button)
         toolbar.addWidget(self.save_setup_button)
         toolbar.addWidget(self.import_button)
@@ -125,6 +127,7 @@ class ThumbforgeDocker(DockWidget):
 
     def _connect_signals(self):
         self.detect_button.clicked.connect(self.detect_text_layers)
+        self.refresh_button.clicked.connect(self.refresh_text_layers)
         self.load_setup_button.clicked.connect(self.load_setup)
         self.save_setup_button.clicked.connect(self.save_setup)
         self.import_button.clicked.connect(self.import_csv)
@@ -151,31 +154,75 @@ class ThumbforgeDocker(DockWidget):
             doc = Krita.instance().activeDocument()
             if doc is None:
                 raise RuntimeError("No active Krita document.")
-            self.mappings = []
-            for node in self._walk_nodes(doc.rootNode()):
-                if str(node.type()).lower() != "vectorlayer":
-                    continue
-                for shape in list(node.shapes()):
-                    svg = shape.toSvg()
-                    text = self._first_text(svg)
-                    if text is None:
-                        continue
-                    variable_name = "text_" + str(len(self.mappings) + 1)
-                    self.mappings.append(
-                        TextMapping(
-                            layer_name=node.name(),
-                            shape_name=shape.name(),
-                            source_text=text,
-                            variable_name=variable_name,
-                        )
-                    )
-                    if variable_name not in self.columns:
-                        self.columns.append(variable_name)
+            self.mappings = self._detect_mappings(doc)
+            for mapping in self.mappings:
+                if mapping.variable_name not in self.columns:
+                    self.columns.append(mapping.variable_name)
             self._refresh_mapping_table()
             self._refresh_variables_table()
             self.status_label.setText("Detected " + str(len(self.mappings)) + " text mapping(s).")
         except Exception as exc:
             self._show_error(exc)
+
+    def refresh_text_layers(self):
+        try:
+            doc = Krita.instance().activeDocument()
+            if doc is None:
+                raise RuntimeError("No active Krita document.")
+            detected = self._detect_mappings(doc)
+            self.mappings = self._merge_mappings(self.mappings, detected)
+            for mapping in self.mappings:
+                if mapping.variable_name not in self.columns:
+                    self.columns.append(mapping.variable_name)
+            self._refresh_mapping_table()
+            self._refresh_variables_table()
+            self.status_label.setText("Refreshed " + str(len(self.mappings)) + " text mapping(s).")
+        except Exception as exc:
+            self._show_error(exc)
+
+    def _detect_mappings(self, doc) -> list[TextMapping]:
+        mappings: list[TextMapping] = []
+        for node in self._walk_nodes(doc.rootNode()):
+            if str(node.type()).lower() != "vectorlayer":
+                continue
+            for shape in list(node.shapes()):
+                svg = shape.toSvg()
+                text = self._first_text(svg)
+                if text is None:
+                    continue
+                mappings.append(
+                    TextMapping(
+                        layer_name=node.name(),
+                        shape_name=shape.name(),
+                        source_text=text,
+                        variable_name="text_" + str(len(mappings) + 1),
+                    )
+                )
+        return mappings
+
+    def _merge_mappings(
+        self,
+        existing: list[TextMapping],
+        detected: list[TextMapping],
+    ) -> list[TextMapping]:
+        by_shape = {
+            (mapping.layer_name, mapping.shape_name): mapping
+            for mapping in existing
+            if mapping.shape_name
+        }
+        by_source = {
+            (mapping.layer_name, mapping.source_text): mapping
+            for mapping in existing
+        }
+        merged = []
+        for mapping in detected:
+            previous = by_shape.get((mapping.layer_name, mapping.shape_name))
+            if previous is None:
+                previous = by_source.get((mapping.layer_name, mapping.source_text))
+            if previous is not None:
+                mapping.variable_name = previous.variable_name
+            merged.append(mapping)
+        return merged
 
     def _walk_nodes(self, node):
         yield node
