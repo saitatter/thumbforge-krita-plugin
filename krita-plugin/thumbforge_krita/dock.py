@@ -274,13 +274,25 @@ class ThumbforgeDocker(DockWidget):
         if row < 0 or row >= len(self.mappings):
             return
         mapping = self.mappings[row]
+        old_variable = mapping.variable_name
         mapping.layer_name = self.mapping_table.item(row, 0).text().strip()
         mapping.shape_name = self.mapping_table.item(row, 1).text().strip()
         mapping.source_text = self.mapping_table.item(row, 2).text()
         mapping.variable_name = self.mapping_table.item(row, 3).text().strip()
-        if mapping.variable_name and mapping.variable_name not in self.columns:
-            self.columns.append(mapping.variable_name)
+        if mapping.variable_name and mapping.variable_name != old_variable:
+            self._rename_variable_column(old_variable, mapping.variable_name)
             self._refresh_variables_table()
+
+    def _rename_variable_column(self, old_name: str, new_name: str):
+        if not new_name:
+            return
+        if old_name in self.columns and new_name not in self.columns:
+            self.columns[self.columns.index(old_name)] = new_name
+            for row in self.rows:
+                row[new_name] = row.pop(old_name, "")
+            return
+        if new_name not in self.columns:
+            self.columns.append(new_name)
 
     def _variables_changed(self, item):
         self._sync_rows_from_table()
