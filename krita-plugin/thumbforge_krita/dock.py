@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import (
 from .csv_io import read_variable_csv, write_variable_csv
 from .exporter import KritaTemplateExporter
 from .models import PngExportSettings, TextMapping, ensure_png_path, substitute
+from .project_store import load_project_from_document, save_project_to_document
 from .text_replace import plain_text
 
 
@@ -39,7 +40,7 @@ class ThumbforgeDocker(DockWidget):
         self._connect_signals()
 
     def canvasChanged(self, canvas):
-        pass
+        self.load_setup(silent=True)
 
     def _build_ui(self):
         root = QWidget()
@@ -47,9 +48,13 @@ class ThumbforgeDocker(DockWidget):
 
         toolbar = QHBoxLayout()
         self.detect_button = QPushButton("Detect Text")
+        self.load_setup_button = QPushButton("Load Setup")
+        self.save_setup_button = QPushButton("Save Setup")
         self.import_button = QPushButton("Import CSV")
         self.export_csv_button = QPushButton("Export CSV")
         toolbar.addWidget(self.detect_button)
+        toolbar.addWidget(self.load_setup_button)
+        toolbar.addWidget(self.save_setup_button)
         toolbar.addWidget(self.import_button)
         toolbar.addWidget(self.export_csv_button)
         layout.addLayout(toolbar)
@@ -112,6 +117,8 @@ class ThumbforgeDocker(DockWidget):
 
     def _connect_signals(self):
         self.detect_button.clicked.connect(self.detect_text_layers)
+        self.load_setup_button.clicked.connect(self.load_setup)
+        self.save_setup_button.clicked.connect(self.save_setup)
         self.import_button.clicked.connect(self.import_csv)
         self.export_csv_button.clicked.connect(self.export_csv)
         self.add_row_button.clicked.connect(self.add_row)
@@ -252,6 +259,49 @@ class ThumbforgeDocker(DockWidget):
         except Exception as exc:
             self._show_error(exc)
 
+    def save_setup(self):
+        self._sync_rows_from_table()
+        try:
+            doc = Krita.instance().activeDocument()
+            if doc is None:
+                raise RuntimeError("No active Krita document.")
+            save_project_to_document(
+                doc,
+                mappings=self.mappings,
+                columns=self.columns,
+                rows=self.rows,
+                name_pattern=self.name_pattern_edit.text().strip() or "thumb_{episode}",
+                png_settings=self._png_settings(),
+            )
+            if doc.fileName():
+                doc.save()
+                doc.waitForDone()
+            self.status_label.setText("Thumbforge setup saved in this .kra.")
+        except Exception as exc:
+            self._show_error(exc)
+
+    def load_setup(self, silent: bool = False):
+        try:
+            doc = Krita.instance().activeDocument()
+            if doc is None:
+                return
+            project = load_project_from_document(doc)
+            if project is None:
+                if not silent:
+                    self.status_label.setText("No Thumbforge setup saved in this .kra.")
+                return
+            self.mappings = project["mappings"]
+            self.columns = project["columns"] or ["episode"]
+            self.rows = project["rows"]
+            self.name_pattern_edit.setText(project["name_pattern"])
+            self._set_png_settings(project["png_settings"])
+            self._refresh_mapping_table()
+            self._refresh_variables_table()
+            self.status_label.setText("Loaded Thumbforge setup from this .kra.")
+        except Exception as exc:
+            if not silent:
+                self._show_error(exc)
+
     def export_csv(self):
         self._sync_rows_from_table()
         path, _ = QFileDialog.getSaveFileName(self, "Export CSV", "thumbforge.csv", "CSV (*.csv)")
@@ -309,6 +359,13 @@ class ThumbforgeDocker(DockWidget):
             save_icc=self.save_icc_check.isChecked(),
             interlaced=self.interlaced_check.isChecked(),
         )
+
+    def _set_png_settings(self, settings: PngExportSettings):
+        self.compression_spin.setValue(settings.compression)
+        self.alpha_check.setChecked(settings.alpha)
+        self.force_srgb_check.setChecked(settings.force_srgb)
+        self.save_icc_check.setChecked(settings.save_icc)
+        self.interlaced_check.setChecked(settings.interlaced)
 
     def _show_error(self, exc: Exception):
         self.status_label.setText("Error: " + str(exc))
