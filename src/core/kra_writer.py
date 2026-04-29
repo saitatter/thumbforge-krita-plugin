@@ -81,6 +81,18 @@ def _find_text_element(text_elements, source_text: str, used: set[int]):
 
 
 def _set_element_text(text_el, value: str) -> None:
-    for child in list(text_el):
-        text_el.remove(child)
+    """Replace text content while preserving Krita's SVG text structure."""
+    tspans = text_el.xpath(".//*[local-name()='tspan']")
+    if tspans:
+        tspans[0].text = value
+        tspans[0].tail = None
+        for tspan in tspans[1:]:
+            tspan.text = ""
+            tspan.tail = None
+        text_el.text = text_el.text if text_el.text and text_el.text.strip() else None
+        return
+
     text_el.text = value
+    for child in text_el:
+        child.text = ""
+        child.tail = None
