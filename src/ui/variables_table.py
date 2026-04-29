@@ -75,6 +75,8 @@ class VariablesTable(QWidget):
         self.table.setColumnCount(len(self.project.variable_columns))
         self.table.setHorizontalHeaderLabels(self.project.variable_columns)
         self._load_rows()
+        if self.table.rowCount() > 0:
+            self.table.setCurrentCell(0, 0)
 
     def _load_rows(self):
         self._loading = True
@@ -93,6 +95,7 @@ class VariablesTable(QWidget):
         if "episode" in self.project.variable_columns:
             col = self.project.variable_columns.index("episode")
             self.table.setItem(row_idx, col, QTableWidgetItem(str(row_idx + 1)))
+        self.table.setCurrentCell(row_idx, 0)
 
     def _remove_row(self):
         row = self.table.currentRow()
@@ -154,6 +157,8 @@ class VariablesTable(QWidget):
 
     def _on_item_changed(self, item: QTableWidgetItem):
         if self._loading:
+            return
+        if item.row() != self.table.currentRow():
             return
         variables = self._row_to_dict(item.row())
         if variables is not None:

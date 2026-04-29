@@ -66,6 +66,9 @@ class ExportWorker(QObject):
             if self.mode == "current":
                 message = self._export_current()
                 self.completed.emit("Export Complete", message)
+            elif self.mode == "preview":
+                self._export_current()
+                self.completed.emit("Preview Complete", self.output_path)
             else:
                 message = self._export_batch()
                 self.completed.emit("Batch Export Complete", message)
@@ -148,6 +151,7 @@ class MainWindow(QMainWindow):
         self.btn_save_project = QPushButton("Save Project")
         self.btn_export = QPushButton("Export All")
         self.btn_export_one = QPushButton("Export Current")
+        self.btn_render_preview = QPushButton("Render Preview")
         toolbar.addWidget(self.btn_open_project)
         toolbar.addWidget(self.btn_save_project)
         toolbar.addWidget(self.btn_open_bg)
@@ -157,6 +161,7 @@ class MainWindow(QMainWindow):
         self.name_pattern_edit.setMinimumWidth(180)
         toolbar.addWidget(self.name_pattern_edit)
         toolbar.addStretch()
+        toolbar.addWidget(self.btn_render_preview)
         toolbar.addWidget(self.btn_export_one)
         toolbar.addWidget(self.btn_export)
         root_layout.addLayout(toolbar)
@@ -197,6 +202,7 @@ class MainWindow(QMainWindow):
         self.btn_save_project.clicked.connect(self._save_project)
         self.btn_export.clicked.connect(self._export_all)
         self.btn_export_one.clicked.connect(self._export_current)
+        self.btn_render_preview.clicked.connect(self._render_current_preview)
         self.variables_table.selectionChanged.connect(self._on_row_selected)
         self.variables_table.variablesEdited.connect(self._on_row_selected)
         self.mapping_table.itemChanged.connect(self._on_mapping_changed)
@@ -241,15 +247,6 @@ class MainWindow(QMainWindow):
                         svg_path=detail.svg_path,
                         source_text=detail.text,
                     )
-                    self.project.template_config.overlays.append(
-                        TextOverlay(
-                            text=f"{{{variable_name}}}",
-                            x=int(detail.x or detail.layer.x),
-                            y=int(detail.y or detail.layer.y),
-                            font_size=parse_font_size(detail.font_size),
-                            color=detail.fill or "#ffffff",
-                        )
-                    )
                 self._refresh_mapping_table()
                 self.variables_table.refresh_from_project()
                 if template.merged_preview:
@@ -281,6 +278,12 @@ class MainWindow(QMainWindow):
     def _refresh_preview(self, variables: dict[str, str] | None = None):
         variables = variables or {}
         try:
+            if self.project.kra_template_path and self.project.kra_preview_path:
+                from PIL import Image
+
+                self.preview.set_image(Image.open(self.project.kra_preview_path))
+                self.statusBar().showMessage("Template preview shown. Use Render Preview for selected row.")
+                return
             image = render_thumbnail(self.project.template_config, variables)
             self.preview.set_image(image)
         except Exception as exc:
@@ -313,8 +316,6 @@ class MainWindow(QMainWindow):
             if not variable_name:
                 return
             self.project.text_layer_mappings[row].variable_name = variable_name
-            if row < len(self.project.template_config.overlays):
-                self.project.template_config.overlays[row].text = f"{{{variable_name}}}"
             if variable_name not in self.project.variable_columns:
                 self.project.variable_columns.append(variable_name)
                 self.variables_table.refresh_from_project()
@@ -393,6 +394,28 @@ class MainWindow(QMainWindow):
             )
             self._start_export(worker)
 
+    def _render_current_preview(self):
+        self._sync_project_from_ui()
+        row = self.variables_table.current_variables()
+        if not row:
+            self.statusBar().showMessage("No row selected.")
+            return
+        if not (self.project.kra_template_path and self.project.text_layer_mappings):
+            self._refresh_preview(row)
+            return
+        output_path = str(Path(tempfile.gettempdir()) / "thumbforge" / "current_preview.png")
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        worker = ExportWorker(
+            mode="preview",
+            template_config=deepcopy(self.project.template_config),
+            kra_template_path=self.project.kra_template_path,
+            text_layer_mappings=deepcopy(self.project.text_layer_mappings),
+            variables=deepcopy(row),
+            output_path=output_path,
+            name_pattern=self.project.name_pattern,
+        )
+        self._start_export(worker)
+
     def _export_all(self):
         self._sync_project_from_ui()
         output_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
@@ -420,6 +443,7 @@ class MainWindow(QMainWindow):
 
         self.btn_export.setEnabled(False)
         self.btn_export_one.setEnabled(False)
+        self.btn_render_preview.setEnabled(False)
         self.statusBar().showMessage("Export running...")
 
         thread = QThread(self)
@@ -439,6 +463,12 @@ class MainWindow(QMainWindow):
         thread.start()
 
     def _on_export_completed(self, title: str, message: str):
+        if title == "Preview Complete":
+            from PIL import Image
+
+            self.preview.set_image(Image.open(message))
+            self.statusBar().showMessage("Rendered preview for selected row.")
+            return
         QMessageBox.information(self, title, message)
         self.statusBar().showMessage(message.splitlines()[0])
 
@@ -451,3 +481,4 @@ class MainWindow(QMainWindow):
         self._export_worker = None
         self.btn_export.setEnabled(True)
         self.btn_export_one.setEnabled(True)
+        self.btn_render_preview.setEnabled(True)
