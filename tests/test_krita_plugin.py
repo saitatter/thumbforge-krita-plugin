@@ -104,6 +104,15 @@ def test_validation_sanitizes_and_detects_duplicate_outputs():
         {"episode": "1"},
         models.PngExportSettings(file_format="webp"),
     )
+    paths = validation.build_output_paths(
+        output_dir="out",
+        pattern="{series}/thumb_{episode}",
+        rows=[
+            {"series": "A:B", "episode": "1"},
+            {"series": "A:B", "episode": "1"},
+        ],
+        settings=models.PngExportSettings(),
+    )
     issues = validation.validate_export_plan(
         mappings=[models.TextMapping("Layer", "Old", "title")],
         columns=["episode", "title"],
@@ -113,4 +122,6 @@ def test_validation_sanitizes_and_detects_duplicate_outputs():
     )
 
     assert path.endswith("bad_name_1.webp")
-    assert any("same filename" in issue.message for issue in issues)
+    assert paths[0].endswith("A_B\\thumb_1.png") or paths[0].endswith("A_B/thumb_1.png")
+    assert paths[1].endswith("A_B\\thumb_1_2.png") or paths[1].endswith("A_B/thumb_1_2.png")
+    assert not any("same filename" in issue.message for issue in issues)

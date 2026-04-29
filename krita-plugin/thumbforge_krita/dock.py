@@ -33,7 +33,7 @@ from .exporter import KritaTemplateExporter
 from .models import ExportReport, PngExportSettings, TextMapping, ensure_export_path
 from .project_store import load_project_from_document, save_project_to_document
 from .text_replace import plain_text
-from .validation import build_output_path, validate_export_plan
+from .validation import build_output_paths, validate_export_plan
 
 
 class ThumbforgeDocker(DockWidget):
@@ -493,6 +493,12 @@ class ThumbforgeDocker(DockWidget):
                 return
             report = ExportReport(exported=[], failures=[])
             exporter = self._exporter()
+            output_paths = build_output_paths(
+                output_dir=output_dir,
+                pattern=self.name_pattern_edit.text().strip() or "thumb_{episode}",
+                rows=selected_rows,
+                settings=self._png_settings(),
+            )
             progress = QProgressDialog("Exporting thumbnails...", "Cancel", 0, len(row_indexes), self)
             progress.setWindowTitle("Thumbforge Export")
             progress.setMinimumDuration(0)
@@ -506,12 +512,7 @@ class ThumbforgeDocker(DockWidget):
                 )
                 QApplication.processEvents()
                 variables = self.rows[row_index]
-                output_path = build_output_path(
-                    output_dir,
-                    self.name_pattern_edit.text().strip() or "thumb_{episode}",
-                    variables,
-                    self._png_settings(),
-                )
+                output_path = output_paths[progress_index - 1]
                 try:
                     exporter.export_job(template_path, variables, output_path)
                     report.exported.append(output_path)
