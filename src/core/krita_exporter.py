@@ -181,7 +181,7 @@ def export_kra_jobs_with_script(
     krita_executable: str | None = None,
     timeout_seconds: int = 300,
 ) -> BatchExportReport:
-    """Apply variables and export via one controlled Krita Python script run."""
+    """Apply variables through Krita's Python API and export each job."""
     executable = krita_executable or find_krita_runner() or find_krita_executable()
     if not executable:
         raise KritaExportError("Krita runner/executable not found.")
@@ -195,13 +195,12 @@ def export_kra_jobs_with_script(
             try:
                 output_path = Path(output_path)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-                modified_kra = tmp_dir / f"thumb_{index}.kra"
-                write_variable_kra(template_path, modified_kra, mappings, variables)
                 manifest_jobs.append(
                     {
                         "index": index,
-                        "kra": str(modified_kra),
+                        "template": str(template_path),
                         "output": str(output_path),
+                        "variables": variables,
                     }
                 )
                 exported.append(output_path)
@@ -214,7 +213,21 @@ def export_kra_jobs_with_script(
         manifest_path = tmp_dir / "jobs.json"
         log_path = tmp_dir / "krita_export.log"
         manifest_path.write_text(
-            json.dumps({"jobs": manifest_jobs, "log": str(log_path)}, indent=2),
+            json.dumps(
+                {
+                    "jobs": manifest_jobs,
+                    "mappings": [
+                        {
+                            "layer_name": mapping.layer_name,
+                            "variable_name": mapping.variable_name,
+                            "source_text": mapping.source_text,
+                        }
+                        for mapping in mappings
+                    ],
+                    "log": str(log_path),
+                },
+                indent=2,
+            ),
             encoding="utf-8",
         )
 
@@ -301,10 +314,13 @@ def _write_kritarunner_module(module_name: str) -> Path:
 
 
 def _krita_export_script() -> str:
-    return f'''
+    return r'''
+import html
 import json
+import re
 import sys
 import traceback
+from collections import defaultdict
 
 from krita import Krita, InfoObject
 from PyQt5.QtWidgets import QApplication
@@ -319,6 +335,87 @@ def write_log(message):
 
 
 LOG_PATH = ""
+TEXT_RE = re.compile(r"(<text\b[^>]*>)(.*?)(</text>)", re.IGNORECASE | re.DOTALL)
+TSPAN_RE = re.compile(r"(<tspan\b[^>]*>)(.*?)(</tspan>)", re.IGNORECASE | re.DOTALL)
+TAG_RE = re.compile(r"<[^>]+>")
+
+
+def plain_text(svg_fragment):
+    spans = TSPAN_RE.findall(svg_fragment)
+    if spans:
+        return "".join(html.unescape(TAG_RE.sub("", span[1])) for span in spans)
+    return html.unescape(TAG_RE.sub("", svg_fragment))
+
+
+def replace_tspan_text(text_body, value):
+    escaped = html.escape(str(value), quote=False)
+    replaced = False
+
+    def replace_match(match):
+        nonlocal replaced
+        if replaced:
+            return match.group(1) + match.group(3)
+        replaced = True
+        return match.group(1) + escaped + match.group(3)
+
+    updated = TSPAN_RE.sub(replace_match, text_body)
+    if replaced:
+        return updated
+    return escaped
+
+
+def apply_mapping_to_svg(svg, source_text, value):
+    target = str(source_text or "")
+    consumed = False
+
+    def replace_text(match):
+        nonlocal consumed
+        if consumed:
+            return match.group(0)
+        body = match.group(2)
+        if target and plain_text(body) != target:
+            return match.group(0)
+        consumed = True
+        return match.group(1) + replace_tspan_text(body, value) + match.group(3)
+
+    updated = TEXT_RE.sub(replace_text, svg)
+    if consumed:
+        return updated, True
+    return svg, False
+
+
+def update_vector_layer(doc, layer_name, mappings, variables):
+    node = doc.nodeByName(layer_name)
+    if node is None:
+        raise RuntimeError("Layer not found: " + layer_name)
+    if str(node.type()).lower() != "vectorlayer":
+        raise RuntimeError("Layer is not a vector layer: " + layer_name)
+
+    svg = node.toSvg()
+    matched_any = False
+    for mapping in mappings:
+        variable_name = mapping.get("variable_name", "")
+        value = variables.get(variable_name, "")
+        svg, matched = apply_mapping_to_svg(svg, mapping.get("source_text", ""), value)
+        matched_any = matched_any or matched
+
+    if not matched_any:
+        raise RuntimeError("No matching text shape found in layer: " + layer_name)
+
+    for shape in list(node.shapes()):
+        shape.setVisible(False)
+        shape.update()
+    added = node.addShapesFromSvg(svg)
+    if not added:
+        raise RuntimeError("Krita did not add replacement text shapes for layer: " + layer_name)
+
+
+def apply_variables(doc, mappings, variables):
+    mappings_by_layer = defaultdict(list)
+    for mapping in mappings:
+        mappings_by_layer[mapping.get("layer_name", "")].append(mapping)
+    for layer_name, layer_mappings in mappings_by_layer.items():
+        update_vector_layer(doc, layer_name, layer_mappings, variables)
 
 
 def run(*args):
@@ -332,21 +429,19 @@ def run(*args):
 
     LOG_PATH = manifest.get("log", "")
     app = Krita.instance()
+    mappings = manifest.get("mappings", [])
 
     try:
         for job in manifest["jobs"]:
-            write_log("Opening " + job["kra"])
-            doc = app.openDocument(job["kra"])
+            write_log("Opening " + job["template"])
+            doc = app.openDocument(job["template"])
             if doc is None:
-                raise RuntimeError("Krita could not open " + job["kra"])
-            try:
-                doc.setBatchmode(True)
-            except Exception:
-                pass
+                raise RuntimeError("Krita could not open " + job["template"])
             try:
                 doc.waitForDone()
             except Exception:
                 pass
+            apply_variables(doc, mappings, job.get("variables", {}))
             try:
                 doc.refreshProjection()
                 doc.waitForDone()
