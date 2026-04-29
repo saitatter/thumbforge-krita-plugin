@@ -1,6 +1,7 @@
 """Krita command-line export integration."""
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import tempfile
@@ -149,3 +150,176 @@ def batch_export_kra_report(
             except Exception as exc:
                 failures.append(f"Row {index}: {exc}")
     return BatchExportReport(exported=exported, failures=failures)
+
+
+def export_kra_jobs_with_script(
+    template_path: str | Path,
+    mappings: list[TextLayerMapping],
+    jobs: list[tuple[dict[str, str], str | Path]],
+    *,
+    krita_executable: str | None = None,
+    timeout_seconds: int = 300,
+) -> BatchExportReport:
+    """Apply variables and export via one controlled Krita Python script run."""
+    executable = krita_executable or find_krita_executable()
+    if not executable:
+        raise KritaExportError("Krita executable not found.")
+
+    exported: list[Path] = []
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="thumbforge_krita_") as tmp:
+        tmp_dir = Path(tmp)
+        manifest_jobs = []
+        for index, (variables, output_path) in enumerate(jobs, start=1):
+            try:
+                output_path = Path(output_path)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                modified_kra = tmp_dir / f"thumb_{index}.kra"
+                write_variable_kra(template_path, modified_kra, mappings, variables)
+                manifest_jobs.append(
+                    {
+                        "index": index,
+                        "kra": str(modified_kra),
+                        "output": str(output_path),
+                    }
+                )
+                exported.append(output_path)
+            except Exception as exc:
+                failures.append(f"Row {index}: {exc}")
+
+        if not manifest_jobs:
+            return BatchExportReport(exported=[], failures=failures)
+
+        manifest_path = tmp_dir / "jobs.json"
+        script_path = tmp_dir / "thumbforge_krita_export.py"
+        log_path = tmp_dir / "krita_export.log"
+        manifest_path.write_text(
+            json.dumps({"jobs": manifest_jobs, "log": str(log_path)}, indent=2),
+            encoding="utf-8",
+        )
+        script_path.write_text(
+            _krita_export_script(manifest_path),
+            encoding="utf-8",
+        )
+
+        command = [
+            executable,
+            "--nosplash",
+            f"-scriptFile={script_path}",
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise KritaExportError(
+                f"Krita scripted export timed out after {timeout_seconds} seconds."
+            ) from exc
+
+        log_text = log_path.read_text(encoding="utf-8") if log_path.exists() else ""
+        if completed.returncode != 0:
+            detail = completed.stderr.strip() or completed.stdout.strip() or log_text.strip()
+            raise KritaExportError(f"Krita scripted export failed: {detail}")
+
+        missing = [path for path in exported if not path.exists()]
+        if missing:
+            detail = log_text.strip() or "Krita did not create all expected files."
+            for path in missing:
+                failures.append(f"{path.name}: missing output. {detail}")
+            exported = [path for path in exported if path.exists()]
+
+    return BatchExportReport(exported=exported, failures=failures)
+
+
+def batch_export_kra_script_report(
+    template_path: str | Path,
+    mappings: list[TextLayerMapping],
+    variable_sets: list[dict[str, str]],
+    output_dir: str | Path,
+    *,
+    name_pattern: str = "thumb_{episode}",
+    krita_executable: str | None = None,
+    timeout_seconds: int = 300,
+) -> BatchExportReport:
+    """Batch export .kra rows through Krita's Python API in one process."""
+    from core.renderer import _substitute
+
+    output_dir = Path(output_dir)
+    jobs = [
+        (variables, output_dir / f"{_substitute(name_pattern, variables)}.png")
+        for variables in variable_sets
+    ]
+    return export_kra_jobs_with_script(
+        template_path,
+        mappings,
+        jobs,
+        krita_executable=krita_executable,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def _krita_export_script(manifest_path: Path) -> str:
+    manifest_literal = str(manifest_path).replace("\\", "\\\\")
+    return f'''
+import json
+import sys
+import traceback
+
+from krita import Krita, InfoObject
+from PyQt5.QtWidgets import QApplication
+
+MANIFEST_PATH = r"{manifest_literal}"
+
+
+def write_log(message):
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as handle:
+            handle.write(message + "\\n")
+    except Exception:
+        pass
+
+
+with open(MANIFEST_PATH, "r", encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+LOG_PATH = manifest.get("log", "")
+app = Krita.instance()
+
+try:
+    for job in manifest["jobs"]:
+        write_log("Opening " + job["kra"])
+        doc = app.openDocument(job["kra"])
+        if doc is None:
+            raise RuntimeError("Krita could not open " + job["kra"])
+        try:
+            doc.setBatchmode(True)
+        except Exception:
+            pass
+        try:
+            doc.waitForDone()
+        except Exception:
+            pass
+        write_log("Exporting " + job["output"])
+        ok = doc.exportImage(job["output"], InfoObject())
+        try:
+            doc.waitForDone()
+        except Exception:
+            pass
+        if ok is False:
+            raise RuntimeError("Krita exportImage returned false for " + job["output"])
+        doc.close()
+    write_log("Done")
+except Exception:
+    write_log(traceback.format_exc())
+    raise
+finally:
+    qt_app = QApplication.instance()
+    if qt_app is not None:
+        qt_app.quit()
+    else:
+        sys.exit(0)
+'''

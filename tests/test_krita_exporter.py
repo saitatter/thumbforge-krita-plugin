@@ -9,7 +9,13 @@ from unittest.mock import patch
 
 from tests import test_support as _test_support  # noqa: F401
 
-from core.krita_exporter import batch_export_kra, batch_export_kra_report, export_kra_to_image
+from core.krita_exporter import (
+    batch_export_kra,
+    batch_export_kra_report,
+    batch_export_kra_script_report,
+    export_kra_jobs_with_script,
+    export_kra_to_image,
+)
 from core.project import TextLayerMapping
 
 
@@ -95,3 +101,56 @@ class KritaExporterTests(unittest.TestCase):
             self.assertEqual(report.succeeded, 0)
             self.assertEqual(report.failed, 1)
             self.assertIn("Row 1", report.failures[0])
+
+    @patch("core.krita_exporter.subprocess.run")
+    def test_export_kra_jobs_with_script_invokes_krita_script(self, run):
+        run.return_value.returncode = 0
+        run.return_value.stderr = ""
+        run.return_value.stdout = ""
+        with tempfile.TemporaryDirectory() as tmp:
+            template = Path(tmp) / "template.kra"
+            output = Path(tmp) / "out.png"
+            with zipfile.ZipFile(template, "w") as zf:
+                zf.writestr("maindoc.xml", "<DOC />")
+                zf.writestr("layers/text1/content.svg", "<svg><text>Old</text></svg>")
+
+            report = export_kra_jobs_with_script(
+                template,
+                [
+                    TextLayerMapping(
+                        layer_name="Text 1",
+                        variable_name="title",
+                        svg_path="layers/text1/content.svg",
+                        source_text="Old",
+                    )
+                ],
+                [({"title": "New"}, output)],
+                krita_executable="krita.exe",
+            )
+
+            args = run.call_args.args[0]
+            self.assertEqual(args[0], "krita.exe")
+            self.assertIn("--nosplash", args)
+            self.assertTrue(any(str(arg).startswith("-scriptFile=") for arg in args))
+            self.assertEqual(run.call_args.kwargs["timeout"], 300)
+            self.assertEqual(report.succeeded, 0)
+            self.assertEqual(report.failed, 1)
+
+    @patch("core.krita_exporter.export_kra_jobs_with_script")
+    def test_batch_export_kra_script_report_builds_output_names(self, export):
+        from core.krita_exporter import BatchExportReport
+
+        export.return_value = BatchExportReport(exported=[Path("out/ep_1.png")], failures=[])
+
+        report = batch_export_kra_script_report(
+            "template.kra",
+            [],
+            [{"episode": "1"}],
+            "out",
+            name_pattern="ep_{episode}",
+            krita_executable="krita.exe",
+        )
+
+        self.assertEqual(report.succeeded, 1)
+        jobs = export.call_args.args[2]
+        self.assertEqual(jobs[0][1], Path("out") / "ep_1.png")

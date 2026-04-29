@@ -74,6 +74,18 @@ class ExportWorker(QObject):
             self.failed.emit(str(exc))
 
     def _export_current(self) -> str:
+        if self.kra_template_path and self.text_layer_mappings:
+            from core.krita_exporter import export_kra_jobs_with_script
+
+            report = export_kra_jobs_with_script(
+                self.kra_template_path,
+                self.text_layer_mappings,
+                [(self.variables, self.output_path)],
+            )
+            if report.failures:
+                raise RuntimeError("\n".join(report.failures))
+            return f"Exported: {self.output_path}"
+
         from core.renderer import export_thumbnail, render_thumbnail
 
         image = render_thumbnail(self.template_config, self.variables)
@@ -81,6 +93,21 @@ class ExportWorker(QObject):
         return f"Exported: {self.output_path}"
 
     def _export_batch(self) -> str:
+        if self.kra_template_path and self.text_layer_mappings:
+            from core.krita_exporter import batch_export_kra_script_report
+
+            report = batch_export_kra_script_report(
+                self.kra_template_path,
+                self.text_layer_mappings,
+                self.rows,
+                self.output_dir,
+                name_pattern=self.name_pattern,
+            )
+            message = f"Exported {report.succeeded} thumbnail(s) to {self.output_dir}"
+            if report.failures:
+                message += f"\n\nFailed {report.failed} row(s):\n" + "\n".join(report.failures[:5])
+            return message
+
         from core.renderer import batch_export
 
         exported = batch_export(
