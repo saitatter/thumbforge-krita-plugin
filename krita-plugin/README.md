@@ -1,23 +1,17 @@
 # Thumbforge Krita Plugin
 
-Krita docker for batch-exporting thumbnails from the active `.kra` document.
+This directory contains the Krita plugin payload:
 
-## Install Locally
+```text
+thumbforge_krita.desktop
+thumbforge_krita/
+```
 
-Copy `thumbforge_krita.desktop` and the `thumbforge_krita` folder into Krita's `pykrita` resource folder:
+Use the repository-level scripts to install or package it:
 
 ```powershell
 .\scripts\install-krita-plugin.ps1
+.\scripts\package-krita-plugin.ps1
 ```
 
-Then restart Krita, enable **Thumbforge** in `Settings > Configure Krita > Python Plugin Manager`, restart again, and open it from `Settings > Dockers > Thumbforge`.
-
-## MVP Workflow
-
-1. Open and save a `.kra` template in Krita.
-2. Open the Thumbforge docker.
-3. Click `Detect Text`.
-4. Rename mapping variables if needed.
-5. Import a CSV or add rows manually.
-6. Click `Save Setup` to persist mappings and rows inside the `.kra`.
-7. Export the selected row or export all rows.
+The packaged zip is created under `dist/` and can be installed with Krita's `Tools > Scripts > Import Python Plugin...`.

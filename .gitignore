@@ -13,7 +13,7 @@ ENV/
 env/
 .python-version
 
-# PySide / Qt
+# Krita / Qt
 *.qmlc
 *.qmlcache
 .qmake.stash
@@ -21,6 +21,7 @@ env/
 *.pro.user.*
 build/
 dist/
+src/
 
 # OS files
 .DS_Store
@@ -40,8 +41,6 @@ desktop.ini
 
 # Packaging / installers
 *.spec
-!thumbforge.spec
-!thumbforge-portable.spec
 
 # PyInstaller
 *.manifest

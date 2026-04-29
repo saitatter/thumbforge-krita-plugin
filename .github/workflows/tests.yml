@@ -18,16 +18,16 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install test dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install pytest
 
       - name: Run test suite
-        env:
-          PYTHONPATH: src
-          QT_QPA_PLATFORM: offscreen
-        run: |
-          python -m unittest discover -s tests -v
+        run: python -m pytest
+
+      - name: Package plugin
+        shell: pwsh
+        run: .\scripts\package-krita-plugin.ps1
