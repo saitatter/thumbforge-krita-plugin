@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+import re
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -148,3 +149,11 @@ def _load_font(font_path: str, size: int) -> ImageFont.FreeTypeFont | ImageFont.
         return ImageFont.truetype("arial.ttf", size)
     except OSError:
         return ImageFont.load_default()
+
+
+def parse_font_size(value: str, default: int = 72) -> int:
+    """Parse CSS/Krita font-size strings into an integer pixel size."""
+    match = re.search(r"\d+(?:\.\d+)?", value or "")
+    if not match:
+        return default
+    return max(1, int(float(match.group(0))))

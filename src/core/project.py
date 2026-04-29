@@ -22,6 +22,7 @@ class ThumbforgeProject:
     """A saved project: template config + variable definitions."""
     name: str = "Untitled"
     kra_template_path: str = ""
+    kra_preview_path: str = ""
     template_config: TemplateConfig = field(default_factory=TemplateConfig)
     variable_columns: list[str] = field(default_factory=lambda: ["episode"])
     text_layer_mappings: list[TextLayerMapping] = field(default_factory=list)

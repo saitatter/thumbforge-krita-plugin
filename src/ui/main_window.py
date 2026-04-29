@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from copy import deepcopy
 from pathlib import Path
+import tempfile
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtWidgets import (
@@ -23,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from core.project import ThumbforgeProject
-from core.renderer import TemplateConfig, TextOverlay, render_thumbnail
+from core.renderer import TextOverlay, parse_font_size, render_thumbnail
 from ui.preview_widget import PreviewWidget
 from ui.variables_table import VariablesTable
 
@@ -73,43 +74,13 @@ class ExportWorker(QObject):
             self.failed.emit(str(exc))
 
     def _export_current(self) -> str:
-        if self.kra_template_path and self.text_layer_mappings:
-            import tempfile
-            from core.kra_writer import write_variable_kra
-            from core.krita_exporter import export_kra_to_image
+        from core.renderer import export_thumbnail, render_thumbnail
 
-            with tempfile.TemporaryDirectory(prefix="thumbforge_kra_") as tmp:
-                kra_path = Path(tmp) / "current.kra"
-                write_variable_kra(
-                    self.kra_template_path,
-                    kra_path,
-                    self.text_layer_mappings,
-                    self.variables,
-                )
-                export_kra_to_image(kra_path, self.output_path)
-        else:
-            from core.renderer import export_thumbnail, render_thumbnail
-
-            image = render_thumbnail(self.template_config, self.variables)
-            export_thumbnail(image, self.output_path)
+        image = render_thumbnail(self.template_config, self.variables)
+        export_thumbnail(image, self.output_path)
         return f"Exported: {self.output_path}"
 
     def _export_batch(self) -> str:
-        if self.kra_template_path and self.text_layer_mappings:
-            from core.krita_exporter import batch_export_kra_report
-
-            report = batch_export_kra_report(
-                self.kra_template_path,
-                self.text_layer_mappings,
-                self.rows,
-                self.output_dir,
-                name_pattern=self.name_pattern,
-            )
-            message = f"Exported {report.succeeded} thumbnail(s) to {self.output_dir}"
-            if report.failures:
-                message += f"\n\nFailed {report.failed} row(s):\n" + "\n".join(report.failures[:5])
-            return message
-
         from core.renderer import batch_export
 
         exported = batch_export(
@@ -227,6 +198,11 @@ class MainWindow(QMainWindow):
                 self.project.template_config.width = template.width
                 self.project.template_config.height = template.height
                 self.project.text_layer_mappings.clear()
+                self.project.template_config.overlays.clear()
+                if template.merged_preview:
+                    preview_path = self._save_template_preview(template.merged_preview, path)
+                    self.project.kra_preview_path = preview_path
+                    self.project.template_config.background_path = preview_path
                 details = list_text_layer_details(template)
                 for index, detail in enumerate(details, start=1):
                     variable_name = f"text_{index}"
@@ -237,6 +213,15 @@ class MainWindow(QMainWindow):
                         variable_name=variable_name,
                         svg_path=detail.svg_path,
                         source_text=detail.text,
+                    )
+                    self.project.template_config.overlays.append(
+                        TextOverlay(
+                            text=f"{{{variable_name}}}",
+                            x=int(detail.x or detail.layer.x),
+                            y=int(detail.y or detail.layer.y),
+                            font_size=parse_font_size(detail.font_size),
+                            color=detail.fill or "#ffffff",
+                        )
                     )
                 self._refresh_mapping_table()
                 self.variables_table.refresh_from_project()
@@ -255,6 +240,13 @@ class MainWindow(QMainWindow):
             except Exception as exc:
                 logger.error("Failed to load .kra: %s", exc)
                 QMessageBox.warning(self, "Error", f"Failed to load template:\n{exc}")
+
+    def _save_template_preview(self, image, template_path: str) -> str:
+        cache_dir = Path(tempfile.gettempdir()) / "thumbforge"
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        output_path = cache_dir / f"{Path(template_path).stem}_merged.png"
+        image.save(output_path, format="PNG")
+        return str(output_path)
 
     def _on_row_selected(self, variables: dict[str, str]):
         self._refresh_preview(variables)
@@ -294,6 +286,8 @@ class MainWindow(QMainWindow):
             if not variable_name:
                 return
             self.project.text_layer_mappings[row].variable_name = variable_name
+            if row < len(self.project.template_config.overlays):
+                self.project.template_config.overlays[row].text = f"{{{variable_name}}}"
             if variable_name not in self.project.variable_columns:
                 self.project.variable_columns.append(variable_name)
                 self.variables_table.refresh_from_project()
@@ -377,7 +371,6 @@ class MainWindow(QMainWindow):
         output_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if not output_dir:
             return
-        from core.renderer import batch_export
         rows = self.variables_table.all_variables()
         if not rows:
             self.statusBar().showMessage("No rows to export.")

@@ -13,6 +13,7 @@ from core.renderer import (
     batch_export,
     render_thumbnail,
     export_thumbnail,
+    parse_font_size,
 )
 
 
@@ -27,6 +28,11 @@ class RendererTests(unittest.TestCase):
         config = TemplateConfig(width=1280, height=720, overlays=[overlay])
         image = render_thumbnail(config, {"episode": "42"})
         self.assertIsNotNone(image)
+
+    def test_parse_font_size_handles_css_values(self):
+        self.assertEqual(parse_font_size("72px", default=12), 72)
+        self.assertEqual(parse_font_size("18.5pt", default=12), 18)
+        self.assertEqual(parse_font_size("", default=12), 12)
 
     def test_export_thumbnail_creates_file(self):
         config = TemplateConfig(width=640, height=360)
@@ -58,6 +64,7 @@ class ProjectTests(unittest.TestCase):
         project = ThumbforgeProject(
             name="Test Series",
             kra_template_path="template.kra",
+            kra_preview_path="preview.png",
             variable_columns=["episode", "title"],
             text_layer_mappings=[
                 TextLayerMapping(
@@ -86,6 +93,7 @@ class ProjectTests(unittest.TestCase):
 
             self.assertEqual(loaded.name, "Test Series")
             self.assertEqual(loaded.kra_template_path, "template.kra")
+            self.assertEqual(loaded.kra_preview_path, "preview.png")
             self.assertEqual(loaded.template_config.width, 1920)
             self.assertEqual(len(loaded.text_layer_mappings), 1)
             self.assertEqual(loaded.text_layer_mappings[0].variable_name, "title")
