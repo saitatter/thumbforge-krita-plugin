@@ -1,8 +1,8 @@
-$ErrorActionPreference = "Stop"
-
 param(
     [string]$Repository = "saitatter/thumbforge-krita-plugin"
 )
+
+$ErrorActionPreference = "Stop"
 
 $body = @{
     required_status_checks = @{
