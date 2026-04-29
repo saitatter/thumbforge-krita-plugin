@@ -5,6 +5,12 @@ $sourceRoot = Join-Path $repoRoot "krita-plugin"
 $targetRoot = Join-Path $env:APPDATA "krita\pykrita"
 $targetPlugin = Join-Path $targetRoot "thumbforge_krita"
 
+$kritaProcess = Get-Process krita -ErrorAction SilentlyContinue
+if ($kritaProcess) {
+    Write-Host "Krita is currently running. Close Krita, then run this installer again." -ForegroundColor Yellow
+    exit 1
+}
+
 New-Item -ItemType Directory -Force -Path $targetRoot | Out-Null
 if (Test-Path $targetPlugin) {
     Remove-Item -LiteralPath $targetPlugin -Recurse -Force
