@@ -135,6 +135,7 @@ class ThumbforgeDocker(DockWidget):
         self.remove_row_button = QPushButton("- Row")
         self.add_column_button = QPushButton("+ Column")
         self.remove_column_button = QPushButton("- Column")
+        self.generate_rows_button = QPushButton("Generate Rows")
         self.paste_rows_button = QPushButton("Paste Rows")
         self.preview_row_button = QPushButton("Preview Row")
         self.export_current_button = QPushButton("Export Current")
@@ -144,6 +145,7 @@ class ThumbforgeDocker(DockWidget):
         row_toolbar.addWidget(self.remove_row_button)
         row_toolbar.addWidget(self.add_column_button)
         row_toolbar.addWidget(self.remove_column_button)
+        row_toolbar.addWidget(self.generate_rows_button)
         row_toolbar.addWidget(self.paste_rows_button)
         row_toolbar.addStretch()
         row_toolbar.addWidget(self.preview_row_button)
@@ -173,6 +175,7 @@ class ThumbforgeDocker(DockWidget):
         self.remove_row_button.clicked.connect(self.remove_selected_row)
         self.add_column_button.clicked.connect(self.add_column)
         self.remove_column_button.clicked.connect(self.remove_selected_column)
+        self.generate_rows_button.clicked.connect(self.generate_rows)
         self.paste_rows_button.clicked.connect(self.paste_rows)
         self.preview_row_button.clicked.connect(self.preview_row)
         self.export_current_button.clicked.connect(self.export_current)
@@ -390,6 +393,22 @@ class ThumbforgeDocker(DockWidget):
         for row in self.rows:
             row.pop(name, None)
         self._refresh_variables_table()
+
+    def generate_rows(self):
+        count, accepted = QInputDialog.getInt(self, "Generate Rows", "Rows", 10, 1, 10000)
+        if not accepted:
+            return
+        self.rows = []
+        for index in range(1, count + 1):
+            row = {column: "" for column in self.columns}
+            if "episode" in self.columns:
+                row["episode"] = str(index)
+            for column in self.columns:
+                if column.startswith("text_"):
+                    row[column] = "#" + str(index)
+            self.rows.append(row)
+        self._refresh_variables_table()
+        self.status_label.setText("Generated " + str(count) + " row(s).")
 
     def import_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import CSV", "", "CSV (*.csv);;All Files (*)")
