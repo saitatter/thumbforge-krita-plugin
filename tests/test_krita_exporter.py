@@ -23,9 +23,28 @@ class KritaExporterTests(unittest.TestCase):
         export_kra_to_image("template.kra", "out.png", krita_executable="krita.exe")
 
         args = run.call_args.args[0]
-        self.assertEqual(args[:3], ["krita.exe", "--export", "--export-filename"])
-        self.assertEqual(args[3], "out.png")
-        self.assertEqual(args[4], "template.kra")
+        self.assertEqual(args[:4], ["krita.exe", "--nosplash", "--export", "--export-filename"])
+        self.assertEqual(args[4], "out.png")
+        self.assertEqual(args[5], "template.kra")
+        self.assertEqual(run.call_args.kwargs["timeout"], 120)
+
+    @patch("core.krita_exporter.subprocess.run")
+    def test_export_kra_to_image_times_out(self, run):
+        import subprocess
+
+        from core.krita_exporter import KritaExportError
+
+        run.side_effect = subprocess.TimeoutExpired("krita.exe", 1)
+
+        with self.assertRaises(KritaExportError) as raised:
+            export_kra_to_image(
+                "template.kra",
+                "out.png",
+                krita_executable="krita.exe",
+                timeout_seconds=1,
+            )
+
+        self.assertIn("timed out", str(raised.exception))
 
     @patch("core.krita_exporter.export_kra_to_image")
     def test_batch_export_kra_writes_modified_templates(self, export):

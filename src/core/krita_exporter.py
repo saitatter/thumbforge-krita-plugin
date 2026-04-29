@@ -51,6 +51,7 @@ def export_kra_to_image(
     output_path: str | Path,
     *,
     krita_executable: str | None = None,
+    timeout_seconds: int = 120,
 ) -> None:
     """Export a .kra file to an image using Krita's CLI."""
     executable = krita_executable or find_krita_executable()
@@ -61,17 +62,24 @@ def export_kra_to_image(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     command = [
         executable,
+        "--nosplash",
         "--export",
         "--export-filename",
         str(output_path),
         str(kra_path),
     ]
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise KritaExportError(
+            f"Krita export timed out after {timeout_seconds} seconds."
+        ) from exc
     if completed.returncode != 0:
         detail = completed.stderr.strip() or completed.stdout.strip()
         raise KritaExportError(f"Krita export failed: {detail}")
@@ -85,6 +93,7 @@ def batch_export_kra(
     *,
     name_pattern: str = "thumb_{episode}",
     krita_executable: str | None = None,
+    timeout_seconds: int = 120,
 ) -> list[Path]:
     """Apply variables to a .kra template and export each result with Krita."""
     from core.renderer import _substitute
@@ -101,6 +110,7 @@ def batch_export_kra(
                 modified_kra,
                 output_path,
                 krita_executable=krita_executable,
+                timeout_seconds=timeout_seconds,
             )
             exported.append(output_path)
     return exported
@@ -114,6 +124,7 @@ def batch_export_kra_report(
     *,
     name_pattern: str = "thumb_{episode}",
     krita_executable: str | None = None,
+    timeout_seconds: int = 120,
 ) -> BatchExportReport:
     """Batch export a .kra template and keep per-row success/failure details."""
     from core.renderer import _substitute
@@ -132,6 +143,7 @@ def batch_export_kra_report(
                     modified_kra,
                     output_path,
                     krita_executable=krita_executable,
+                    timeout_seconds=timeout_seconds,
                 )
                 exported.append(output_path)
             except Exception as exc:
