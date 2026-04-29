@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 from tests import test_support as _test_support  # noqa: F401
 
-from core.krita_exporter import batch_export_kra, export_kra_to_image
+from core.krita_exporter import batch_export_kra, batch_export_kra_report, export_kra_to_image
 from core.project import TextLayerMapping
 
 
@@ -57,3 +57,22 @@ class KritaExporterTests(unittest.TestCase):
             self.assertEqual(exported, [Path(tmp) / "out" / "ep_1.png"])
             self.assertEqual(export.call_count, 1)
 
+    @patch("core.krita_exporter.export_kra_to_image")
+    def test_batch_export_kra_report_tracks_failures(self, export):
+        export.side_effect = RuntimeError("boom")
+        with tempfile.TemporaryDirectory() as tmp:
+            template = Path(tmp) / "template.kra"
+            with zipfile.ZipFile(template, "w") as zf:
+                zf.writestr("maindoc.xml", "<DOC />")
+
+            report = batch_export_kra_report(
+                template,
+                [],
+                [{"episode": "1"}],
+                Path(tmp) / "out",
+                krita_executable="krita.exe",
+            )
+
+            self.assertEqual(report.succeeded, 0)
+            self.assertEqual(report.failed, 1)
+            self.assertIn("Row 1", report.failures[0])

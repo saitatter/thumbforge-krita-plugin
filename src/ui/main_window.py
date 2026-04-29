@@ -257,6 +257,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", f"Failed to save project:\n{exc}")
 
     def _export_current(self):
+        self._sync_project_from_ui()
         row = self.variables_table.current_variables()
         if not row:
             self.statusBar().showMessage("No row selected.")
@@ -266,12 +267,32 @@ class MainWindow(QMainWindow):
             "PNG (*.png);;JPEG (*.jpg)",
         )
         if path:
-            from core.renderer import export_thumbnail
-            image = render_thumbnail(self.project.template_config, row)
-            export_thumbnail(image, path)
-            self.statusBar().showMessage(f"Exported: {path}")
+            try:
+                if self.project.kra_template_path and self.project.text_layer_mappings:
+                    import tempfile
+                    from core.kra_writer import write_variable_kra
+                    from core.krita_exporter import export_kra_to_image
+
+                    with tempfile.TemporaryDirectory(prefix="thumbforge_kra_") as tmp:
+                        kra_path = Path(tmp) / "current.kra"
+                        write_variable_kra(
+                            self.project.kra_template_path,
+                            kra_path,
+                            self.project.text_layer_mappings,
+                            row,
+                        )
+                        export_kra_to_image(kra_path, path)
+                else:
+                    from core.renderer import export_thumbnail
+                    image = render_thumbnail(self.project.template_config, row)
+                    export_thumbnail(image, path)
+                self.statusBar().showMessage(f"Exported: {path}")
+            except Exception as exc:
+                logger.error("Export failed: %s", exc)
+                QMessageBox.warning(self, "Export Failed", str(exc))
 
     def _export_all(self):
+        self._sync_project_from_ui()
         output_dir = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if not output_dir:
             return
@@ -280,10 +301,34 @@ class MainWindow(QMainWindow):
         if not rows:
             self.statusBar().showMessage("No rows to export.")
             return
+        if self.project.kra_template_path and self.project.text_layer_mappings:
+            from core.krita_exporter import batch_export_kra_report
+
+            report = batch_export_kra_report(
+                self.project.kra_template_path,
+                self.project.text_layer_mappings,
+                rows,
+                output_dir,
+                name_pattern=self.project.name_pattern,
+            )
+            message = f"Exported {report.succeeded} thumbnail(s) to {output_dir}"
+            if report.failures:
+                message += f"\n\nFailed {report.failed} row(s):\n" + "\n".join(report.failures[:5])
+            QMessageBox.information(self, "Batch Export Complete", message)
+            self.statusBar().showMessage(
+                f"Exported {report.succeeded}; failed {report.failed}"
+            )
+            return
+
         exported = batch_export(
             self.project.template_config,
             rows,
             output_dir,
             name_pattern=self.project.name_pattern,
+        )
+        QMessageBox.information(
+            self,
+            "Batch Export Complete",
+            f"Exported {len(exported)} thumbnail(s) to {output_dir}",
         )
         self.statusBar().showMessage(f"Exported {len(exported)} thumbnail(s) to {output_dir}")

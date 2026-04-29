@@ -4,6 +4,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 
 from core.kra_writer import write_variable_kra
@@ -12,6 +13,21 @@ from core.project import TextLayerMapping
 
 class KritaExportError(RuntimeError):
     """Raised when Krita cannot export a thumbnail."""
+
+
+@dataclass
+class BatchExportReport:
+    """Result details for a batch export operation."""
+    exported: list[Path]
+    failures: list[str]
+
+    @property
+    def succeeded(self) -> int:
+        return len(self.exported)
+
+    @property
+    def failed(self) -> int:
+        return len(self.failures)
 
 
 def find_krita_executable() -> str | None:
@@ -88,3 +104,36 @@ def batch_export_kra(
             )
             exported.append(output_path)
     return exported
+
+
+def batch_export_kra_report(
+    template_path: str | Path,
+    mappings: list[TextLayerMapping],
+    variable_sets: list[dict[str, str]],
+    output_dir: str | Path,
+    *,
+    name_pattern: str = "thumb_{episode}",
+    krita_executable: str | None = None,
+) -> BatchExportReport:
+    """Batch export a .kra template and keep per-row success/failure details."""
+    from core.renderer import _substitute
+
+    output_dir = Path(output_dir)
+    exported: list[Path] = []
+    failures: list[str] = []
+    with tempfile.TemporaryDirectory(prefix="thumbforge_kra_") as tmp:
+        tmp_dir = Path(tmp)
+        for index, variables in enumerate(variable_sets, start=1):
+            try:
+                modified_kra = tmp_dir / f"thumb_{index}.kra"
+                write_variable_kra(template_path, modified_kra, mappings, variables)
+                output_path = output_dir / f"{_substitute(name_pattern, variables)}.png"
+                export_kra_to_image(
+                    modified_kra,
+                    output_path,
+                    krita_executable=krita_executable,
+                )
+                exported.append(output_path)
+            except Exception as exc:
+                failures.append(f"Row {index}: {exc}")
+    return BatchExportReport(exported=exported, failures=failures)
