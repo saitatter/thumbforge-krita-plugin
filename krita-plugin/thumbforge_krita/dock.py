@@ -61,12 +61,14 @@ class ThumbforgeDocker(DockWidget):
         self.load_setup_button = QPushButton("Load Setup")
         self.save_setup_button = QPushButton("Save Setup")
         self.import_button = QPushButton("Import CSV")
+        self.import_names_button = QPushButton("Import Filenames")
         self.export_csv_button = QPushButton("Export CSV")
         toolbar.addWidget(self.detect_button)
         toolbar.addWidget(self.refresh_button)
         toolbar.addWidget(self.load_setup_button)
         toolbar.addWidget(self.save_setup_button)
         toolbar.addWidget(self.import_button)
+        toolbar.addWidget(self.import_names_button)
         toolbar.addWidget(self.export_csv_button)
         layout.addLayout(toolbar)
 
@@ -173,6 +175,7 @@ class ThumbforgeDocker(DockWidget):
         self.load_setup_button.clicked.connect(self.load_setup)
         self.save_setup_button.clicked.connect(self.save_setup)
         self.import_button.clicked.connect(self.import_csv)
+        self.import_names_button.clicked.connect(self.import_filenames)
         self.export_csv_button.clicked.connect(self.export_csv)
         self.add_row_button.clicked.connect(self.add_row)
         self.remove_row_button.clicked.connect(self.remove_selected_row)
@@ -460,6 +463,26 @@ class ThumbforgeDocker(DockWidget):
             self.status_label.setText("Imported " + str(len(rows)) + " row(s).")
         except Exception as exc:
             self._show_error(exc)
+
+    def import_filenames(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, "Import Filenames", "", "All Files (*)")
+        if not paths:
+            return
+        for column in ["filename", "title"]:
+            if column not in self.columns:
+                self.columns.append(column)
+        self._sync_rows_from_table()
+        start = len(self.rows) + 1
+        for offset, path in enumerate(paths):
+            stem = os.path.splitext(os.path.basename(path))[0]
+            row = {column: "" for column in self.columns}
+            if "episode" in self.columns:
+                row["episode"] = str(start + offset)
+            row["filename"] = stem
+            row["title"] = stem
+            self.rows.append(row)
+        self._refresh_variables_table()
+        self.status_label.setText("Imported " + str(len(paths)) + " filename row(s).")
 
     def paste_rows(self):
         try:
