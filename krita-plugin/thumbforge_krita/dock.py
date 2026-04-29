@@ -14,6 +14,8 @@ from PyQt5.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QApplication,
+    QProgressDialog,
     QPushButton,
     QSpinBox,
     QTableWidget,
@@ -353,7 +355,16 @@ class ThumbforgeDocker(DockWidget):
                 return
             report = ExportReport(exported=[], failures=[])
             exporter = self._exporter()
+            progress = QProgressDialog("Exporting thumbnails...", "Cancel", 0, len(self.rows), self)
+            progress.setWindowTitle("Thumbforge Export")
+            progress.setMinimumDuration(0)
             for index, variables in enumerate(self.rows, start=1):
+                if progress.wasCanceled():
+                    report.failures.append("Export canceled after row " + str(index - 1) + ".")
+                    break
+                progress.setValue(index - 1)
+                progress.setLabelText("Exporting row " + str(index) + " of " + str(len(self.rows)))
+                QApplication.processEvents()
                 output_path = build_output_path(
                     output_dir,
                     self.name_pattern_edit.text().strip() or "thumb_{episode}",
@@ -365,6 +376,9 @@ class ThumbforgeDocker(DockWidget):
                 except Exception as exc:
                     report.failures.append("Row " + str(index) + ": " + str(exc))
                 self.status_label.setText("Exported " + str(index) + "/" + str(len(self.rows)))
+                progress.setValue(index)
+                QApplication.processEvents()
+            progress.setValue(len(self.rows))
             QMessageBox.information(self, "Thumbforge", self._format_report(report))
         except Exception as exc:
             self._show_error(exc)
