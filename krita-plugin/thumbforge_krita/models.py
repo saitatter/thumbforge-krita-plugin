@@ -23,6 +23,8 @@ class PngExportSettings:
     force_srgb: bool = True
     save_icc: bool = True
     interlaced: bool = False
+    target_width: int = 0
+    target_height: int = 0
 
 
 @dataclass

@@ -70,7 +70,14 @@ def test_project_store_round_trips_setup():
         columns=["episode", "title"],
         rows=[{"episode": "1", "title": "New"}],
         name_pattern="ep_{episode}",
-        png_settings=models.PngExportSettings(file_format="jpg", compression=4, quality=82, alpha=False),
+        png_settings=models.PngExportSettings(
+            file_format="jpg",
+            compression=4,
+            quality=82,
+            alpha=False,
+            target_width=1280,
+            target_height=720,
+        ),
     )
     loaded = project_store.deserialize_project(payload)
 
@@ -83,6 +90,8 @@ def test_project_store_round_trips_setup():
     assert loaded["png_settings"].file_format == "jpg"
     assert loaded["png_settings"].quality == 82
     assert loaded["png_settings"].alpha is False
+    assert loaded["png_settings"].target_width == 1280
+    assert loaded["png_settings"].target_height == 720
 
 
 def test_validation_sanitizes_and_detects_duplicate_outputs():

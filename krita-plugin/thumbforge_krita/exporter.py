@@ -28,6 +28,15 @@ class KritaTemplateExporter:
             self._wait(doc)
             doc.flatten()
             self._wait(doc)
+            if self.settings.target_width > 0 and self.settings.target_height > 0:
+                doc.scaleImage(
+                    self.settings.target_width,
+                    self.settings.target_height,
+                    doc.resolution(),
+                    doc.resolution(),
+                    "bicubic",
+                )
+                self._wait(doc)
             doc.refreshProjection()
             self._wait(doc)
             old_batchmode = app.batchmode()

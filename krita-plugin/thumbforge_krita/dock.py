@@ -107,6 +107,20 @@ class ThumbforgeDocker(DockWidget):
         export_layout.addWidget(self.interlaced_check)
         layout.addWidget(export_group)
 
+        resize_row = QHBoxLayout()
+        resize_row.addWidget(QLabel("Resize"))
+        self.target_width_spin = QSpinBox()
+        self.target_width_spin.setRange(0, 10000)
+        self.target_width_spin.setValue(0)
+        self.target_height_spin = QSpinBox()
+        self.target_height_spin.setRange(0, 10000)
+        self.target_height_spin.setValue(0)
+        resize_row.addWidget(self.target_width_spin)
+        resize_row.addWidget(QLabel("x"))
+        resize_row.addWidget(self.target_height_spin)
+        resize_row.addWidget(QLabel("(0 = original)"))
+        layout.addLayout(resize_row)
+
         mapping_group = QGroupBox("Text Layer Mappings")
         mapping_layout = QVBoxLayout(mapping_group)
         self.mapping_table = QTableWidget(0, 4)
@@ -525,6 +539,8 @@ class ThumbforgeDocker(DockWidget):
             force_srgb=self.force_srgb_check.isChecked(),
             save_icc=self.save_icc_check.isChecked(),
             interlaced=self.interlaced_check.isChecked(),
+            target_width=self.target_width_spin.value(),
+            target_height=self.target_height_spin.value(),
         )
 
     def _set_png_settings(self, settings: PngExportSettings):
@@ -537,6 +553,8 @@ class ThumbforgeDocker(DockWidget):
         self.force_srgb_check.setChecked(settings.force_srgb)
         self.save_icc_check.setChecked(settings.save_icc)
         self.interlaced_check.setChecked(settings.interlaced)
+        self.target_width_spin.setValue(settings.target_width)
+        self.target_height_spin.setValue(settings.target_height)
 
     def _apply_export_preset(self, preset: str):
         if preset == "Small PNG":
@@ -549,6 +567,8 @@ class ThumbforgeDocker(DockWidget):
                     force_srgb=True,
                     save_icc=False,
                     interlaced=False,
+                    target_width=1280,
+                    target_height=720,
                 )
             )
         elif preset == "Transparent PNG":
@@ -561,6 +581,8 @@ class ThumbforgeDocker(DockWidget):
                     force_srgb=True,
                     save_icc=True,
                     interlaced=False,
+                    target_width=0,
+                    target_height=0,
                 )
             )
         else:
@@ -573,6 +595,8 @@ class ThumbforgeDocker(DockWidget):
                     force_srgb=True,
                     save_icc=True,
                     interlaced=False,
+                    target_width=1280,
+                    target_height=720,
                 )
             )
 
