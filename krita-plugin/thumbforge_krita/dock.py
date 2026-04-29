@@ -199,7 +199,26 @@ class ThumbforgeDocker(DockWidget):
         path = doc.fileName()
         if not path:
             raise RuntimeError("Save the .kra template before exporting.")
+        if self._document_is_modified(doc):
+            answer = QMessageBox.question(
+                self,
+                "Thumbforge",
+                "The active .kra has unsaved changes. Save before exporting?",
+                QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel,
+                QMessageBox.Yes,
+            )
+            if answer == QMessageBox.Cancel:
+                raise RuntimeError("Export canceled.")
+            if answer == QMessageBox.Yes:
+                doc.save()
+                doc.waitForDone()
         return path
+
+    def _document_is_modified(self, doc) -> bool:
+        try:
+            return bool(doc.modified())
+        except Exception:
+            return False
 
     def detect_text_layers(self):
         try:
