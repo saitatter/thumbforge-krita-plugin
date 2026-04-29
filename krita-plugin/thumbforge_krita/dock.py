@@ -49,6 +49,7 @@ class ThumbforgeDocker(DockWidget):
         self.rows: list[dict[str, str]] = []
         self._build_ui()
         self._connect_signals()
+        self._check_krita_compatibility()
 
     def canvasChanged(self, canvas):
         self.load_setup(silent=True)
@@ -197,6 +198,24 @@ class ThumbforgeDocker(DockWidget):
         self.mapping_table.itemChanged.connect(self._mapping_changed)
         self.variables_table.itemChanged.connect(self._variables_changed)
         self.export_preset_combo.currentTextChanged.connect(self._apply_export_preset)
+
+    def _check_krita_compatibility(self):
+        try:
+            version = Krita.instance().version()
+        except Exception:
+            version = ""
+        if not version:
+            return
+        log("Krita version: " + version)
+        major = self._parse_major_version(version)
+        if major is not None and major < 5:
+            self.status_label.setText("Thumbforge expects Krita 5.x or newer.")
+
+    def _parse_major_version(self, version: str) -> int | None:
+        try:
+            return int(version.split(".", 1)[0])
+        except Exception:
+            return None
 
     def _active_template_path(self) -> str:
         doc = Krita.instance().activeDocument()
