@@ -36,6 +36,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 600)
 
         self.project = ThumbforgeProject()
+        self.project_path: str = ""
         self._loading_mappings = False
 
         self._build_ui()
@@ -51,8 +52,12 @@ class MainWindow(QMainWindow):
         toolbar = QHBoxLayout()
         self.btn_open_bg = QPushButton("Open Background")
         self.btn_open_kra = QPushButton("Open .kra Template")
+        self.btn_open_project = QPushButton("Open Project")
+        self.btn_save_project = QPushButton("Save Project")
         self.btn_export = QPushButton("Export All")
         self.btn_export_one = QPushButton("Export Current")
+        toolbar.addWidget(self.btn_open_project)
+        toolbar.addWidget(self.btn_save_project)
         toolbar.addWidget(self.btn_open_bg)
         toolbar.addWidget(self.btn_open_kra)
         toolbar.addWidget(QLabel("Filename"))
@@ -96,6 +101,8 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         self.btn_open_bg.clicked.connect(self._open_background)
         self.btn_open_kra.clicked.connect(self._open_kra_template)
+        self.btn_open_project.clicked.connect(self._open_project)
+        self.btn_save_project.clicked.connect(self._save_project)
         self.btn_export.clicked.connect(self._export_all)
         self.btn_export_one.clicked.connect(self._export_current)
         self.variables_table.selectionChanged.connect(self._on_row_selected)
@@ -193,6 +200,52 @@ class MainWindow(QMainWindow):
         self.project.name_pattern = pattern or "thumb_{episode}"
         if not pattern:
             self.name_pattern_edit.setText(self.project.name_pattern)
+
+    def _sync_project_from_ui(self):
+        self.project.rows = self.variables_table.all_variables()
+        self._on_name_pattern_changed()
+
+    def _open_project(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open Thumbforge Project",
+            "",
+            "Thumbforge Projects (*.tfproj *.json);;All Files (*)",
+        )
+        if not path:
+            return
+        try:
+            self.project = ThumbforgeProject.load(path)
+            self.project_path = path
+            self.variables_table.project = self.project
+            self.variables_table.refresh_from_project()
+            self.name_pattern_edit.setText(self.project.name_pattern)
+            self._refresh_mapping_table()
+            self._refresh_preview(self.variables_table.current_variables() or {})
+            self.statusBar().showMessage(f"Project loaded: {Path(path).name}")
+        except Exception as exc:
+            logger.error("Failed to open project: %s", exc)
+            QMessageBox.warning(self, "Error", f"Failed to open project:\n{exc}")
+
+    def _save_project(self):
+        self._sync_project_from_ui()
+        path = self.project_path
+        if not path:
+            path, _ = QFileDialog.getSaveFileName(
+                self,
+                "Save Thumbforge Project",
+                "thumbnail.tfproj",
+                "Thumbforge Projects (*.tfproj);;All Files (*)",
+            )
+            if not path:
+                return
+            self.project_path = path
+        try:
+            self.project.save(path)
+            self.statusBar().showMessage(f"Project saved: {Path(path).name}")
+        except Exception as exc:
+            logger.error("Failed to save project: %s", exc)
+            QMessageBox.warning(self, "Error", f"Failed to save project:\n{exc}")
 
     def _export_current(self):
         row = self.variables_table.current_variables()
