@@ -40,6 +40,7 @@ from .models import ExportReport, PngExportSettings, TextMapping, ensure_export_
 from .logging_utils import log, log_exception, log_path
 from .project_store import load_project_from_document, save_project_to_document
 from .text_replace import plain_text
+from .update_checker import fetch_latest_release, is_newer_version
 from .validation import build_output_paths, validate_export_plan
 from .version import BUILD, VERSION
 
@@ -231,8 +232,13 @@ class ThumbforgeDocker(DockWidget):
 
         self.status_label = QLabel("Open a saved .kra template, then detect text layers.")
         layout.addWidget(self.status_label)
+        utility_row = QHBoxLayout()
         self.version_label = QLabel("Thumbforge " + VERSION + " (" + BUILD + ")")
-        layout.addWidget(self.version_label)
+        self.check_updates_button = QPushButton("Check Updates")
+        utility_row.addWidget(self.version_label)
+        utility_row.addStretch()
+        utility_row.addWidget(self.check_updates_button)
+        layout.addLayout(utility_row)
         self.log_label = QLabel("Log: " + log_path())
         layout.addWidget(self.log_label)
 
@@ -280,6 +286,7 @@ class ThumbforgeDocker(DockWidget):
         self.export_selected_button.setToolTip("Export all selected table rows to a folder.")
         self.export_all_button.setToolTip("Export every row in the variable table to a folder.")
         self.open_output_button.setToolTip("Open the folder used by the latest successful export.")
+        self.check_updates_button.setToolTip("Check GitHub Releases for a newer Thumbforge version.")
         self.status_label.setToolTip("Shows the latest Thumbforge status or validation message.")
         self.log_label.setToolTip("Detailed activity and error log written by the plugin.")
 
@@ -306,6 +313,7 @@ class ThumbforgeDocker(DockWidget):
         self.export_selected_button.clicked.connect(self.export_selected)
         self.export_all_button.clicked.connect(self.export_all)
         self.open_output_button.clicked.connect(self.open_output_folder)
+        self.check_updates_button.clicked.connect(self.check_for_updates)
         self.mapping_table.itemChanged.connect(self._mapping_changed)
         self.variables_table.itemChanged.connect(self._variables_changed)
         self.export_preset_combo.currentTextChanged.connect(self._apply_export_preset)
@@ -864,6 +872,27 @@ class ThumbforgeDocker(DockWidget):
             self.status_label.setText("Opened output folder.")
         else:
             self.status_label.setText("Could not open output folder.")
+
+    def check_for_updates(self):
+        self.status_label.setText("Checking for updates...")
+        QApplication.processEvents()
+        try:
+            latest = fetch_latest_release()
+            if is_newer_version(latest.version, VERSION):
+                message = (
+                    "Thumbforge " + latest.version + " is available.\n\n"
+                    "Current version: " + VERSION + "\n"
+                    "Release: " + latest.url
+                )
+                self.status_label.setText("Update available: " + latest.version)
+            else:
+                message = "Thumbforge is up to date.\n\nCurrent version: " + VERSION
+                self.status_label.setText("Thumbforge is up to date.")
+            QMessageBox.information(self, "Thumbforge Updates", message)
+        except Exception as exc:
+            log_exception("Thumbforge update check failed", exc)
+            self.status_label.setText("Update check failed.")
+            QMessageBox.warning(self, "Thumbforge Updates", "Could not check for updates:\n" + str(exc))
 
     def _exporter(self) -> KritaTemplateExporter:
         return KritaTemplateExporter(self.mappings, self._png_settings())

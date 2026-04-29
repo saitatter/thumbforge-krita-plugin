@@ -150,3 +150,11 @@ def test_version_metadata_exists():
 
     assert version.VERSION
     assert version.BUILD
+
+
+def test_update_checker_compares_versions():
+    update_checker = _load_plugin_module("update_checker")
+
+    assert update_checker.is_newer_version("v0.2.0", "0.1.9") is True
+    assert update_checker.is_newer_version("0.1.0", "0.1.0") is False
+    assert update_checker.is_newer_version("0.1", "0.1.1") is False
