@@ -6,8 +6,8 @@ import os
 import tempfile
 
 from krita import DockWidget, Krita
-from PyQt5.QtGui import QPixmap
-from PyQt5.QtGui import QBrush, QColor
+from PyQt5.QtCore import QUrl
+from PyQt5.QtGui import QBrush, QColor, QDesktopServices, QPixmap
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -51,6 +51,7 @@ class ThumbforgeDocker(DockWidget):
         self.mappings: list[TextMapping] = []
         self.columns: list[str] = ["episode"]
         self.rows: list[dict[str, str]] = []
+        self.last_output_dir = ""
         self._build_ui()
         self._connect_signals()
         self._check_krita_compatibility()
@@ -210,10 +211,13 @@ class ThumbforgeDocker(DockWidget):
         self.export_current_button = QPushButton("Export Current")
         self.export_selected_button = QPushButton("Export Selected")
         self.export_all_button = QPushButton("Export All")
+        self.open_output_button = QPushButton("Open Output Folder")
+        self.open_output_button.setEnabled(False)
         export_actions.addWidget(self.preview_row_button)
         export_actions.addWidget(self.export_current_button)
         export_actions.addWidget(self.export_selected_button)
         export_actions.addWidget(self.export_all_button)
+        export_actions.addWidget(self.open_output_button)
         export_actions.addStretch()
         export_layout.addLayout(export_actions)
         export_layout.addStretch()
@@ -266,6 +270,7 @@ class ThumbforgeDocker(DockWidget):
         self.export_current_button.setToolTip("Export the selected row to a chosen file.")
         self.export_selected_button.setToolTip("Export all selected table rows to a folder.")
         self.export_all_button.setToolTip("Export every row in the variable table to a folder.")
+        self.open_output_button.setToolTip("Open the folder used by the latest successful export.")
         self.status_label.setToolTip("Shows the latest Thumbforge status or validation message.")
         self.log_label.setToolTip("Detailed activity and error log written by the plugin.")
 
@@ -288,6 +293,7 @@ class ThumbforgeDocker(DockWidget):
         self.export_current_button.clicked.connect(self.export_current)
         self.export_selected_button.clicked.connect(self.export_selected)
         self.export_all_button.clicked.connect(self.export_all)
+        self.open_output_button.clicked.connect(self.open_output_folder)
         self.mapping_table.itemChanged.connect(self._mapping_changed)
         self.variables_table.itemChanged.connect(self._variables_changed)
         self.export_preset_combo.currentTextChanged.connect(self._apply_export_preset)
@@ -721,6 +727,7 @@ class ThumbforgeDocker(DockWidget):
         path = ensure_export_path(path, self._png_settings())
         try:
             self._exporter().export_job(self._active_template_path(), self.rows[row], path)
+            self._set_last_output_dir(os.path.dirname(path))
             self.status_label.setText("Exported " + os.path.basename(path))
         except Exception as exc:
             self._show_error(exc)
@@ -759,6 +766,7 @@ class ThumbforgeDocker(DockWidget):
             if errors:
                 QMessageBox.warning(self, "Thumbforge", "\n".join(errors))
                 return
+            self._set_last_output_dir(output_dir)
             report = ExportReport(exported=[], failures=[])
             exporter = self._exporter()
             output_paths = build_output_paths(
@@ -795,6 +803,21 @@ class ThumbforgeDocker(DockWidget):
             QMessageBox.information(self, "Thumbforge", self._format_report(report))
         except Exception as exc:
             self._show_error(exc)
+
+    def _set_last_output_dir(self, output_dir: str):
+        self.last_output_dir = output_dir
+        self.open_output_button.setEnabled(bool(output_dir and os.path.isdir(output_dir)))
+
+    def open_output_folder(self):
+        if not self.last_output_dir or not os.path.isdir(self.last_output_dir):
+            self.status_label.setText("No export folder available yet.")
+            self.open_output_button.setEnabled(False)
+            return
+        opened = QDesktopServices.openUrl(QUrl.fromLocalFile(self.last_output_dir))
+        if opened:
+            self.status_label.setText("Opened output folder.")
+        else:
+            self.status_label.setText("Could not open output folder.")
 
     def _exporter(self) -> KritaTemplateExporter:
         return KritaTemplateExporter(self.mappings, self._png_settings())
