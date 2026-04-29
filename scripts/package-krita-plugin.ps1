@@ -3,10 +3,13 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $pluginRoot = Join-Path $repoRoot "krita-plugin"
 $distRoot = Join-Path $repoRoot "dist"
-$version = "local"
+$version = $env:THUMBFORGE_PLUGIN_VERSION
+if (-not $version) {
+    $version = "local"
+}
 
 $pyproject = Join-Path $repoRoot "pyproject.toml"
-if (Test-Path $pyproject) {
+if ($version -eq "local" -and (Test-Path $pyproject)) {
     $match = Select-String -Path $pyproject -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
     if ($match) {
         $version = $match.Matches[0].Groups[1].Value

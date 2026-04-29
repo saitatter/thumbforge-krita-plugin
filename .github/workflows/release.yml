@@ -2,60 +2,80 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - "v*"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, for example v0.1.1"
+        required: false
+        type: string
 
 permissions:
   contents: write
-  id-token: write
 
 jobs:
   release:
-    runs-on: ubuntu-latest
-    outputs:
-      released: ${{ steps.semantic-release.outputs.released || 'false' }}
-      tag: ${{ steps.semantic-release.outputs.tag }}
-      version: ${{ steps.semantic-release.outputs.version }}
-      commit_sha: ${{ steps.semantic-release.outputs.commit_sha }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-
-      - name: Semantic release
-        id: semantic-release
-        uses: python-semantic-release/python-semantic-release@v10.5.3
-        with:
-          changelog: true
-          github_token: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-          git_committer_name: github-actions[bot]
-          git_committer_email: 41898282+github-actions[bot]@users.noreply.github.com
-          build: false
-
-  build-release-assets:
-    needs: release
-    if: ${{ needs.release.outputs.released == 'true' }}
     runs-on: windows-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          ref: ${{ needs.release.outputs.commit_sha }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Resolve release metadata
+        id: release-meta
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ("${{ github.event_name }}" -eq "workflow_dispatch" -and "${{ inputs.tag }}") {
+            $tag = "${{ inputs.tag }}"
+          }
+          if (-not $tag -or $tag -eq "main") {
+            $versionLine = Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1
+            $tag = "v" + $versionLine.Matches[0].Groups[1].Value
+          }
+          $version = $tag.TrimStart("v")
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "asset=dist/thumbforge-krita-plugin-v$version.zip" >> $env:GITHUB_OUTPUT
 
       - name: Package Krita plugin
         shell: pwsh
+        env:
+          THUMBFORGE_PLUGIN_VERSION: ${{ steps.release-meta.outputs.version }}
         run: .\scripts\package-krita-plugin.ps1
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: thumbforge-krita-plugin-v${{ needs.release.outputs.version }}.zip
-          path: dist/thumbforge-krita-plugin-v${{ needs.release.outputs.version }}.zip
+          name: thumbforge-krita-plugin-${{ steps.release-meta.outputs.tag }}.zip
+          path: ${{ steps.release-meta.outputs.asset }}
 
-      - name: Upload release asset
+      - name: Publish GitHub release
+        shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT || secrets.GITHUB_TOKEN }}
-        run: gh release upload "${{ needs.release.outputs.tag }}" "dist/thumbforge-krita-plugin-v${{ needs.release.outputs.version }}.zip" --clobber
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ steps.release-meta.outputs.tag }}"
+          $asset = "${{ steps.release-meta.outputs.asset }}"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $asset --clobber
+          } else {
+            gh release create $tag $asset --target $env:GITHUB_SHA --title "Thumbforge Krita Plugin $tag" --generate-notes
+          }

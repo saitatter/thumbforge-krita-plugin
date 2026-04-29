@@ -20,8 +20,8 @@
   - `fix(krita): avoid png option dialogs`
   - `test: cover filename sanitization`
   - `ci: package plugin release zip`
-- `python-semantic-release` reads conventional commits from `pyproject.toml`.
-- Do not manually edit generated changelog/release artifacts unless explicitly requested.
+- Releases are created from `v*` tags or the manual GitHub `Release` workflow.
+- Do not manually edit generated release artifacts unless explicitly requested.
 - Keep commits focused and avoid mixing UI, packaging, and export behavior unless the feature requires it.
 
 ## Krita Plugin Rules

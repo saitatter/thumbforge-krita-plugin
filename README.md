@@ -144,9 +144,10 @@ Install into the local Krita profile:
 
 ## 🔄 Releases
 
-This repository uses **semantic-release** with Conventional Commits. On every push to `main`, CI checks if a new version should be published.
+Releases are published from version tags or by manually running the `Release` workflow.
 
 - Use Conventional Commits: `feat: ...`, `fix: ...`, `refactor: ...`, `docs: ...`
+- Bump `pyproject.toml`, open a PR, merge it, then create/push a tag such as `v0.1.1`
 - The release workflow publishes `thumbforge-krita-plugin-vX.Y.Z.zip`
 - The zip is ready for Krita's `Import Python Plugin...` action
 
