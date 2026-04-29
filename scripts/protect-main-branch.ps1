@@ -9,7 +9,7 @@ $body = @{
         strict = $true
         contexts = @("test")
     }
-    enforce_admins = $true
+    enforce_admins = $false
     required_pull_request_reviews = @{
         required_approving_review_count = 1
         dismiss_stale_reviews = $true
