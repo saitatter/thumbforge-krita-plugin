@@ -11,6 +11,7 @@ import zipfile
 from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from lxml import etree
 from PIL import Image
@@ -81,6 +82,18 @@ class KraTemplate:
         )
 
 
+@dataclass
+class KraTextLayer:
+    """Text content discovered inside a Krita shape/text layer."""
+    layer: KraLayer
+    text: str
+    svg_path: str
+    x: float | None = None
+    y: float | None = None
+    font_size: str = ""
+    fill: str = ""
+
+
 def _parse_layer_tree(parent_el) -> list[KraLayer]:
     """Recursively parse layer elements from the XML tree."""
     layers: list[KraLayer] = []
@@ -123,6 +136,47 @@ def list_text_layers(template: KraTemplate) -> list[KraLayer]:
     return result
 
 
+def list_text_layer_details(template: KraTemplate) -> list[KraTextLayer]:
+    """Return editable text content discovered in shapelayer SVG data.
+
+    Krita stores vector/text layer payloads as SVG-like XML files inside the
+    .kra ZIP. The exact file names vary across versions, so this function tries
+    the layer filename prefix first and then falls back to a conservative SVG
+    scan.
+    """
+    if not template._zip_path:
+        return []
+
+    text_layers = list_text_layers(template)
+    details: list[KraTextLayer] = []
+    with zipfile.ZipFile(template._zip_path, "r") as zf:
+        names = zf.namelist()
+        used_svg_paths: set[str] = set()
+        for layer in text_layers:
+            for svg_path in _candidate_svg_paths(layer, names):
+                if svg_path in used_svg_paths:
+                    continue
+                entries = _extract_svg_text_entries(zf.read(svg_path))
+                if not entries:
+                    continue
+                used_svg_paths.add(svg_path)
+                for entry in entries:
+                    details.append(
+                        KraTextLayer(
+                            layer=layer,
+                            text=entry["text"],
+                            svg_path=svg_path,
+                            x=entry["x"],
+                            y=entry["y"],
+                            font_size=entry["font_size"],
+                            fill=entry["fill"],
+                        )
+                    )
+                break
+
+    return details
+
+
 def list_all_layers_flat(template: KraTemplate) -> list[KraLayer]:
     """Return all layers flattened."""
     result: list[KraLayer] = []
@@ -139,3 +193,60 @@ def _collect_layers(
         if node_type is None or layer.node_type == node_type:
             result.append(layer)
         _collect_layers(layer.children, result, node_type)
+
+
+def _candidate_svg_paths(layer: KraLayer, names: list[str]) -> list[str]:
+    svg_names = [name for name in names if name.lower().endswith(".svg")]
+    if not layer.filename:
+        return svg_names
+
+    prefix = layer.filename.rstrip("/")
+    preferred = [
+        name
+        for name in svg_names
+        if name == f"{prefix}.svg" or name.startswith(f"{prefix}/")
+    ]
+    return preferred + [name for name in svg_names if name not in preferred]
+
+
+def _extract_svg_text_entries(svg_bytes: bytes) -> list[dict[str, Any]]:
+    try:
+        root = etree.fromstring(svg_bytes)
+    except etree.XMLSyntaxError:
+        return []
+
+    entries: list[dict[str, Any]] = []
+    for text_el in root.xpath(".//*[local-name()='text']"):
+        text = "".join(text_el.itertext()).strip()
+        if not text:
+            continue
+        style = _parse_style(text_el.get("style", ""))
+        entries.append(
+            {
+                "text": text,
+                "x": _to_float(text_el.get("x")),
+                "y": _to_float(text_el.get("y")),
+                "font_size": text_el.get("font-size") or style.get("font-size", ""),
+                "fill": text_el.get("fill") or style.get("fill", ""),
+            }
+        )
+    return entries
+
+
+def _parse_style(style: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for part in style.split(";"):
+        if ":" not in part:
+            continue
+        key, value = part.split(":", 1)
+        result[key.strip()] = value.strip()
+    return result
+
+
+def _to_float(value: str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
