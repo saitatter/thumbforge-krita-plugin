@@ -33,11 +33,15 @@ class VariablesTable(QWidget):
         self.btn_add = QPushButton("+ Add Row")
         self.btn_remove = QPushButton("- Remove Row")
         self.btn_add_col = QPushButton("+ Add Column")
+        self.btn_rename_col = QPushButton("Rename Column")
+        self.btn_remove_col = QPushButton("Remove Column")
         self.btn_import_csv = QPushButton("Import CSV")
         self.btn_export_csv = QPushButton("Export CSV")
         btn_row.addWidget(self.btn_add)
         btn_row.addWidget(self.btn_remove)
         btn_row.addWidget(self.btn_add_col)
+        btn_row.addWidget(self.btn_rename_col)
+        btn_row.addWidget(self.btn_remove_col)
         btn_row.addWidget(self.btn_import_csv)
         btn_row.addWidget(self.btn_export_csv)
         btn_row.addStretch()
@@ -56,6 +60,8 @@ class VariablesTable(QWidget):
         self.btn_add.clicked.connect(self._add_row)
         self.btn_remove.clicked.connect(self._remove_row)
         self.btn_add_col.clicked.connect(self._add_column)
+        self.btn_rename_col.clicked.connect(self._rename_column)
+        self.btn_remove_col.clicked.connect(self._remove_column)
         self.btn_import_csv.clicked.connect(self._import_csv)
         self.btn_export_csv.clicked.connect(self._export_csv)
         self.table.currentCellChanged.connect(self._on_selection)
@@ -96,6 +102,45 @@ class VariablesTable(QWidget):
             col_idx = self.table.columnCount()
             self.table.insertColumn(col_idx)
             self.table.setHorizontalHeaderItem(col_idx, QTableWidgetItem(name))
+
+    def _rename_column(self):
+        from PySide6.QtWidgets import QInputDialog
+
+        col = self.table.currentColumn()
+        if col < 0 or col >= len(self.project.variable_columns):
+            return
+        old_name = self.project.variable_columns[col]
+        new_name, ok = QInputDialog.getText(
+            self,
+            "Rename Column",
+            "Variable name:",
+            text=old_name,
+        )
+        new_name = new_name.strip()
+        if not ok or not new_name or new_name in self.project.variable_columns:
+            return
+        self.project.rows = self.all_variables()
+        for row in self.project.rows:
+            row[new_name] = row.pop(old_name, "")
+        self.project.variable_columns[col] = new_name
+        for mapping in self.project.text_layer_mappings:
+            if mapping.variable_name == old_name:
+                mapping.variable_name = new_name
+        self.refresh_from_project()
+
+    def _remove_column(self):
+        col = self.table.currentColumn()
+        if col < 0 or col >= len(self.project.variable_columns):
+            return
+        self.project.rows = self.all_variables()
+        name = self.project.variable_columns.pop(col)
+        for row in self.project.rows:
+            row.pop(name, None)
+        for mapping in self.project.text_layer_mappings:
+            if mapping.variable_name == name:
+                mapping.variable_name = ""
+        self.table.removeColumn(col)
+        self.table.setHorizontalHeaderLabels(self.project.variable_columns)
 
     def _on_selection(self, row, col, prev_row, prev_col):
         variables = self._row_to_dict(row)
