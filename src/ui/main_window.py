@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import logging
+from copy import deepcopy
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QGroupBox,
@@ -29,6 +30,97 @@ from ui.variables_table import VariablesTable
 logger = logging.getLogger(__name__)
 
 
+class ExportWorker(QObject):
+    """Runs thumbnail exports outside the UI thread."""
+
+    completed = Signal(str, str)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        *,
+        mode: str,
+        template_config,
+        kra_template_path: str,
+        text_layer_mappings: list,
+        variables: dict[str, str] | None = None,
+        rows: list[dict[str, str]] | None = None,
+        output_path: str = "",
+        output_dir: str = "",
+        name_pattern: str = "thumb_{episode}",
+    ):
+        super().__init__()
+        self.mode = mode
+        self.template_config = template_config
+        self.kra_template_path = kra_template_path
+        self.text_layer_mappings = text_layer_mappings
+        self.variables = variables or {}
+        self.rows = rows or []
+        self.output_path = output_path
+        self.output_dir = output_dir
+        self.name_pattern = name_pattern
+
+    def run(self):
+        try:
+            if self.mode == "current":
+                message = self._export_current()
+                self.completed.emit("Export Complete", message)
+            else:
+                message = self._export_batch()
+                self.completed.emit("Batch Export Complete", message)
+        except Exception as exc:
+            logger.error("Export failed: %s", exc)
+            self.failed.emit(str(exc))
+
+    def _export_current(self) -> str:
+        if self.kra_template_path and self.text_layer_mappings:
+            import tempfile
+            from core.kra_writer import write_variable_kra
+            from core.krita_exporter import export_kra_to_image
+
+            with tempfile.TemporaryDirectory(prefix="thumbforge_kra_") as tmp:
+                kra_path = Path(tmp) / "current.kra"
+                write_variable_kra(
+                    self.kra_template_path,
+                    kra_path,
+                    self.text_layer_mappings,
+                    self.variables,
+                )
+                export_kra_to_image(kra_path, self.output_path)
+        else:
+            from core.renderer import export_thumbnail, render_thumbnail
+
+            image = render_thumbnail(self.template_config, self.variables)
+            export_thumbnail(image, self.output_path)
+        return f"Exported: {self.output_path}"
+
+    def _export_batch(self) -> str:
+        if self.kra_template_path and self.text_layer_mappings:
+            from core.krita_exporter import batch_export_kra_report
+
+            report = batch_export_kra_report(
+                self.kra_template_path,
+                self.text_layer_mappings,
+                self.rows,
+                self.output_dir,
+                name_pattern=self.name_pattern,
+            )
+            message = f"Exported {report.succeeded} thumbnail(s) to {self.output_dir}"
+            if report.failures:
+                message += f"\n\nFailed {report.failed} row(s):\n" + "\n".join(report.failures[:5])
+            return message
+
+        from core.renderer import batch_export
+
+        exported = batch_export(
+            self.template_config,
+            self.rows,
+            self.output_dir,
+            name_pattern=self.name_pattern,
+        )
+        return f"Exported {len(exported)} thumbnail(s) to {self.output_dir}"
+
+
 class MainWindow(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -38,6 +130,8 @@ class MainWindow(QMainWindow):
         self.project = ThumbforgeProject()
         self.project_path: str = ""
         self._loading_mappings = False
+        self._export_thread: QThread | None = None
+        self._export_worker: ExportWorker | None = None
 
         self._build_ui()
         self._connect_signals()
@@ -267,29 +361,16 @@ class MainWindow(QMainWindow):
             "PNG (*.png);;JPEG (*.jpg)",
         )
         if path:
-            try:
-                if self.project.kra_template_path and self.project.text_layer_mappings:
-                    import tempfile
-                    from core.kra_writer import write_variable_kra
-                    from core.krita_exporter import export_kra_to_image
-
-                    with tempfile.TemporaryDirectory(prefix="thumbforge_kra_") as tmp:
-                        kra_path = Path(tmp) / "current.kra"
-                        write_variable_kra(
-                            self.project.kra_template_path,
-                            kra_path,
-                            self.project.text_layer_mappings,
-                            row,
-                        )
-                        export_kra_to_image(kra_path, path)
-                else:
-                    from core.renderer import export_thumbnail
-                    image = render_thumbnail(self.project.template_config, row)
-                    export_thumbnail(image, path)
-                self.statusBar().showMessage(f"Exported: {path}")
-            except Exception as exc:
-                logger.error("Export failed: %s", exc)
-                QMessageBox.warning(self, "Export Failed", str(exc))
+            worker = ExportWorker(
+                mode="current",
+                template_config=deepcopy(self.project.template_config),
+                kra_template_path=self.project.kra_template_path,
+                text_layer_mappings=deepcopy(self.project.text_layer_mappings),
+                variables=deepcopy(row),
+                output_path=path,
+                name_pattern=self.project.name_pattern,
+            )
+            self._start_export(worker)
 
     def _export_all(self):
         self._sync_project_from_ui()
@@ -301,34 +382,52 @@ class MainWindow(QMainWindow):
         if not rows:
             self.statusBar().showMessage("No rows to export.")
             return
-        if self.project.kra_template_path and self.project.text_layer_mappings:
-            from core.krita_exporter import batch_export_kra_report
-
-            report = batch_export_kra_report(
-                self.project.kra_template_path,
-                self.project.text_layer_mappings,
-                rows,
-                output_dir,
-                name_pattern=self.project.name_pattern,
-            )
-            message = f"Exported {report.succeeded} thumbnail(s) to {output_dir}"
-            if report.failures:
-                message += f"\n\nFailed {report.failed} row(s):\n" + "\n".join(report.failures[:5])
-            QMessageBox.information(self, "Batch Export Complete", message)
-            self.statusBar().showMessage(
-                f"Exported {report.succeeded}; failed {report.failed}"
-            )
-            return
-
-        exported = batch_export(
-            self.project.template_config,
-            rows,
-            output_dir,
+        worker = ExportWorker(
+            mode="batch",
+            template_config=deepcopy(self.project.template_config),
+            kra_template_path=self.project.kra_template_path,
+            text_layer_mappings=deepcopy(self.project.text_layer_mappings),
+            rows=deepcopy(rows),
+            output_dir=output_dir,
             name_pattern=self.project.name_pattern,
         )
-        QMessageBox.information(
-            self,
-            "Batch Export Complete",
-            f"Exported {len(exported)} thumbnail(s) to {output_dir}",
-        )
-        self.statusBar().showMessage(f"Exported {len(exported)} thumbnail(s) to {output_dir}")
+        self._start_export(worker)
+
+    def _start_export(self, worker: ExportWorker):
+        if self._export_thread is not None:
+            self.statusBar().showMessage("Export already running.")
+            return
+
+        self.btn_export.setEnabled(False)
+        self.btn_export_one.setEnabled(False)
+        self.statusBar().showMessage("Export running...")
+
+        thread = QThread(self)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.completed.connect(self._on_export_completed)
+        worker.failed.connect(self._on_export_failed)
+        worker.completed.connect(thread.quit)
+        worker.failed.connect(thread.quit)
+        worker.completed.connect(worker.deleteLater)
+        worker.failed.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_export_worker)
+
+        self._export_thread = thread
+        self._export_worker = worker
+        thread.start()
+
+    def _on_export_completed(self, title: str, message: str):
+        QMessageBox.information(self, title, message)
+        self.statusBar().showMessage(message.splitlines()[0])
+
+    def _on_export_failed(self, message: str):
+        QMessageBox.warning(self, "Export Failed", message)
+        self.statusBar().showMessage("Export failed.")
+
+    def _clear_export_worker(self):
+        self._export_thread = None
+        self._export_worker = None
+        self.btn_export.setEnabled(True)
+        self.btn_export_one.setEnabled(True)
