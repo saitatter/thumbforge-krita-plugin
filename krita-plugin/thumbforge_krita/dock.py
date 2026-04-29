@@ -226,7 +226,48 @@ class ThumbforgeDocker(DockWidget):
         self.log_label = QLabel("Log: " + log_path())
         layout.addWidget(self.log_label)
 
+        self._set_tooltips()
         self.setWidget(root)
+
+    def _set_tooltips(self):
+        self.load_setup_button.setToolTip("Load Thumbforge mappings, rows, filename pattern, and export settings from this .kra annotation.")
+        self.save_setup_button.setToolTip("Save the current Thumbforge setup into this .kra as a Krita annotation.")
+        self.annotation_label.setToolTip("Thumbforge stores setup data inside the .kra file, not in a separate sidecar file.")
+        self.name_pattern_edit.setToolTip("Output filename pattern. Use variables like {episode}, {title}, or subfolders like {series}/thumb_{episode}.")
+
+        self.detect_button.setToolTip("Scan the active Krita document and create mappings for detected vector text shapes.")
+        self.refresh_button.setToolTip("Re-scan text shapes while preserving existing variable names when possible.")
+        self.mapping_table.setToolTip("Map each Krita vector text shape to a variable column used by the data rows.")
+
+        self.import_button.setToolTip("Import variable rows from a CSV file.")
+        self.import_names_button.setToolTip("Create rows from selected filenames, filling filename, title, and episode columns.")
+        self.export_csv_button.setToolTip("Export the current variable table to CSV.")
+        self.add_row_button.setToolTip("Add an empty variable row.")
+        self.remove_row_button.setToolTip("Remove the selected variable row.")
+        self.add_column_button.setToolTip("Add a new variable column.")
+        self.remove_column_button.setToolTip("Remove the selected variable column.")
+        self.generate_rows_button.setToolTip("Generate numbered rows and fill text_* columns with #1, #2, and so on.")
+        self.validate_rows_button.setToolTip("Highlight missing values for variables used by text mappings.")
+        self.paste_rows_button.setToolTip("Paste rows from the clipboard, such as copied Excel or Google Sheets cells.")
+        self.variables_table.setToolTip("One row equals one exported thumbnail. Columns are variables used by mappings and filename patterns.")
+
+        self.format_combo.setToolTip("Choose the exported image format.")
+        self.export_preset_combo.setToolTip("Apply common export settings for YouTube, smaller PNGs, or transparent PNG output.")
+        self.compression_spin.setToolTip("PNG compression level. Higher values are smaller but may export slower.")
+        self.quality_spin.setToolTip("JPEG/WebP quality. Higher values keep more detail and create larger files.")
+        self.alpha_check.setToolTip("Preserve transparency when the selected format supports it.")
+        self.force_srgb_check.setToolTip("Ask Krita to convert/export using sRGB color behavior.")
+        self.save_icc_check.setToolTip("Include the sRGB/ICC color profile when Krita supports it for the selected format.")
+        self.interlaced_check.setToolTip("Enable interlaced/progressive PNG-style output when supported.")
+        self.target_width_spin.setToolTip("Export width. Use Original to keep the document width.")
+        self.target_height_spin.setToolTip("Export height. Use Original to keep the document height.")
+
+        self.preview_row_button.setToolTip("Render the selected row to a temporary image and show a preview.")
+        self.export_current_button.setToolTip("Export the selected row to a chosen file.")
+        self.export_selected_button.setToolTip("Export all selected table rows to a folder.")
+        self.export_all_button.setToolTip("Export every row in the variable table to a folder.")
+        self.status_label.setToolTip("Shows the latest Thumbforge status or validation message.")
+        self.log_label.setToolTip("Detailed activity and error log written by the plugin.")
 
     def _connect_signals(self):
         self.detect_button.clicked.connect(self.detect_text_layers)
