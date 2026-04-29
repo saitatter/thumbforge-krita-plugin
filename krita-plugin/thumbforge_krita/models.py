@@ -16,7 +16,9 @@ class TextMapping:
 
 @dataclass
 class PngExportSettings:
+    file_format: str = "png"
     compression: int = 6
+    quality: int = 90
     alpha: bool = True
     force_srgb: bool = True
     save_icc: bool = True
@@ -37,10 +39,23 @@ class ExportReport:
         return len(self.failures)
 
 
-def ensure_png_path(path: str) -> str:
+def export_extension(settings: PngExportSettings) -> str:
+    file_format = (settings.file_format or "png").lower()
+    if file_format in {"jpg", "jpeg"}:
+        return "jpg"
+    if file_format == "webp":
+        return "webp"
+    return "png"
+
+
+def ensure_export_path(path: str, settings: PngExportSettings) -> str:
     if os.path.splitext(path)[1]:
         return path
-    return path + ".png"
+    return path + "." + export_extension(settings)
+
+
+def ensure_png_path(path: str) -> str:
+    return ensure_export_path(path, PngExportSettings())
 
 
 def substitute(text: str, variables: dict[str, str]) -> str:

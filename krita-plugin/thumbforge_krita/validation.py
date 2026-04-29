@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-from .models import TextMapping, ensure_png_path, substitute
+from .models import PngExportSettings, TextMapping, ensure_export_path, substitute
 
 
 INVALID_FILENAME_CHARS = '<>:"/\\|?*'
@@ -17,9 +17,14 @@ class ExportPlanIssue:
     message: str
 
 
-def build_output_path(output_dir: str, pattern: str, variables: dict[str, str]) -> str:
+def build_output_path(
+    output_dir: str,
+    pattern: str,
+    variables: dict[str, str],
+    settings: PngExportSettings | None = None,
+) -> str:
     name = sanitize_filename(substitute(pattern or "thumb_{episode}", variables))
-    return ensure_png_path(os.path.join(output_dir, name))
+    return ensure_export_path(os.path.join(output_dir, name), settings or PngExportSettings())
 
 
 def sanitize_filename(name: str) -> str:
@@ -35,6 +40,7 @@ def validate_export_plan(
     rows: list[dict[str, str]],
     output_dir: str,
     name_pattern: str,
+    settings: PngExportSettings | None = None,
 ) -> list[ExportPlanIssue]:
     issues: list[ExportPlanIssue] = []
     if not mappings:
@@ -47,7 +53,7 @@ def validate_export_plan(
             issues.append(ExportPlanIssue("error", "Missing variable column: " + variable))
     outputs: dict[str, int] = {}
     for index, variables in enumerate(rows, start=1):
-        output_path = build_output_path(output_dir, name_pattern, variables)
+        output_path = build_output_path(output_dir, name_pattern, variables, settings)
         previous = outputs.get(output_path)
         if previous is not None:
             issues.append(

@@ -81,6 +81,7 @@ class KritaTemplateExporter:
 
     def _png_export_options(self):
         options = InfoObject()
+        options.setProperty("quality", self.settings.quality)
         options.setProperty("alpha", self.settings.alpha)
         options.setProperty("compression", self.settings.compression)
         options.setProperty("forceSRGB", self.settings.force_srgb)

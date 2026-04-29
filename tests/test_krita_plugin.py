@@ -70,7 +70,7 @@ def test_project_store_round_trips_setup():
         columns=["episode", "title"],
         rows=[{"episode": "1", "title": "New"}],
         name_pattern="ep_{episode}",
-        png_settings=models.PngExportSettings(compression=4, alpha=False),
+        png_settings=models.PngExportSettings(file_format="jpg", compression=4, quality=82, alpha=False),
     )
     loaded = project_store.deserialize_project(payload)
 
@@ -80,6 +80,8 @@ def test_project_store_round_trips_setup():
     assert loaded["rows"][0]["title"] == "New"
     assert loaded["name_pattern"] == "ep_{episode}"
     assert loaded["png_settings"].compression == 4
+    assert loaded["png_settings"].file_format == "jpg"
+    assert loaded["png_settings"].quality == 82
     assert loaded["png_settings"].alpha is False
 
 
@@ -87,7 +89,12 @@ def test_validation_sanitizes_and_detects_duplicate_outputs():
     models = _load_plugin_module("models")
     validation = _load_plugin_module("validation")
 
-    path = validation.build_output_path("out", "bad:name_{episode}", {"episode": "1"})
+    path = validation.build_output_path(
+        "out",
+        "bad:name_{episode}",
+        {"episode": "1"},
+        models.PngExportSettings(file_format="webp"),
+    )
     issues = validation.validate_export_plan(
         mappings=[models.TextMapping("Layer", "Old", "title")],
         columns=["episode", "title"],
@@ -96,5 +103,5 @@ def test_validation_sanitizes_and_detects_duplicate_outputs():
         name_pattern="thumb_{episode}",
     )
 
-    assert path.endswith("bad_name_1.png")
+    assert path.endswith("bad_name_1.webp")
     assert any("same filename" in issue.message for issue in issues)

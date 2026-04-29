@@ -30,7 +30,7 @@ from PyQt5.QtWidgets import (
 
 from .csv_io import read_variable_csv, write_variable_csv
 from .exporter import KritaTemplateExporter
-from .models import ExportReport, PngExportSettings, TextMapping, ensure_png_path
+from .models import ExportReport, PngExportSettings, TextMapping, ensure_export_path
 from .project_store import load_project_from_document, save_project_to_document
 from .text_replace import plain_text
 from .validation import build_output_path, validate_export_plan
@@ -74,8 +74,12 @@ class ThumbforgeDocker(DockWidget):
         filename_row.addWidget(self.name_pattern_edit)
         layout.addLayout(filename_row)
 
-        export_group = QGroupBox("PNG Export Settings")
+        export_group = QGroupBox("Export Settings")
         export_layout = QHBoxLayout(export_group)
+        export_layout.addWidget(QLabel("Format"))
+        self.format_combo = QComboBox()
+        self.format_combo.addItems(["png", "jpg", "webp"])
+        export_layout.addWidget(self.format_combo)
         export_layout.addWidget(QLabel("Preset"))
         self.export_preset_combo = QComboBox()
         self.export_preset_combo.addItems(["YouTube PNG", "Small PNG", "Transparent PNG"])
@@ -85,6 +89,11 @@ class ThumbforgeDocker(DockWidget):
         self.compression_spin.setRange(0, 9)
         self.compression_spin.setValue(6)
         export_layout.addWidget(self.compression_spin)
+        export_layout.addWidget(QLabel("Quality"))
+        self.quality_spin = QSpinBox()
+        self.quality_spin.setRange(1, 100)
+        self.quality_spin.setValue(90)
+        export_layout.addWidget(self.quality_spin)
         self.alpha_check = QCheckBox("Alpha")
         self.alpha_check.setChecked(True)
         self.force_srgb_check = QCheckBox("sRGB")
@@ -419,10 +428,15 @@ class ThumbforgeDocker(DockWidget):
         if row < 0 or row >= len(self.rows):
             self.status_label.setText("No row selected.")
             return
-        path, _ = QFileDialog.getSaveFileName(self, "Export Current", "thumbnail.png", "PNG (*.png)")
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Current",
+            "thumbnail." + self._png_settings().file_format,
+            "Images (*.png *.jpg *.webp)",
+        )
         if not path:
             return
-        path = ensure_png_path(path)
+        path = ensure_export_path(path, self._png_settings())
         try:
             self._exporter().export_job(self._active_template_path(), self.rows[row], path)
             self.status_label.setText("Exported " + os.path.basename(path))
@@ -457,6 +471,7 @@ class ThumbforgeDocker(DockWidget):
                 rows=selected_rows,
                 output_dir=output_dir,
                 name_pattern=self.name_pattern_edit.text().strip() or "thumb_{episode}",
+                settings=self._png_settings(),
             )
             errors = [issue.message for issue in issues if issue.level == "error"]
             if errors:
@@ -481,6 +496,7 @@ class ThumbforgeDocker(DockWidget):
                     output_dir,
                     self.name_pattern_edit.text().strip() or "thumb_{episode}",
                     variables,
+                    self._png_settings(),
                 )
                 try:
                     exporter.export_job(template_path, variables, output_path)
@@ -502,7 +518,9 @@ class ThumbforgeDocker(DockWidget):
 
     def _png_settings(self) -> PngExportSettings:
         return PngExportSettings(
+            file_format=self.format_combo.currentText(),
             compression=self.compression_spin.value(),
+            quality=self.quality_spin.value(),
             alpha=self.alpha_check.isChecked(),
             force_srgb=self.force_srgb_check.isChecked(),
             save_icc=self.save_icc_check.isChecked(),
@@ -510,7 +528,11 @@ class ThumbforgeDocker(DockWidget):
         )
 
     def _set_png_settings(self, settings: PngExportSettings):
+        index = self.format_combo.findText(settings.file_format)
+        if index >= 0:
+            self.format_combo.setCurrentIndex(index)
         self.compression_spin.setValue(settings.compression)
+        self.quality_spin.setValue(settings.quality)
         self.alpha_check.setChecked(settings.alpha)
         self.force_srgb_check.setChecked(settings.force_srgb)
         self.save_icc_check.setChecked(settings.save_icc)
@@ -520,7 +542,9 @@ class ThumbforgeDocker(DockWidget):
         if preset == "Small PNG":
             self._set_png_settings(
                 PngExportSettings(
+                    file_format="png",
                     compression=9,
+                    quality=90,
                     alpha=False,
                     force_srgb=True,
                     save_icc=False,
@@ -530,7 +554,9 @@ class ThumbforgeDocker(DockWidget):
         elif preset == "Transparent PNG":
             self._set_png_settings(
                 PngExportSettings(
+                    file_format="png",
                     compression=6,
+                    quality=90,
                     alpha=True,
                     force_srgb=True,
                     save_icc=True,
@@ -540,7 +566,9 @@ class ThumbforgeDocker(DockWidget):
         else:
             self._set_png_settings(
                 PngExportSettings(
+                    file_format="png",
                     compression=6,
+                    quality=90,
                     alpha=False,
                     force_srgb=True,
                     save_icc=True,
