@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import tempfile
 
 from krita import DockWidget, Krita
+from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QCheckBox,
     QFileDialog,
@@ -15,6 +17,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QApplication,
+    QDialog,
     QProgressDialog,
     QPushButton,
     QSpinBox,
@@ -99,11 +102,13 @@ class ThumbforgeDocker(DockWidget):
         row_toolbar = QHBoxLayout()
         self.add_row_button = QPushButton("+ Row")
         self.remove_row_button = QPushButton("- Row")
+        self.preview_row_button = QPushButton("Preview Row")
         self.export_current_button = QPushButton("Export Current")
         self.export_all_button = QPushButton("Export All")
         row_toolbar.addWidget(self.add_row_button)
         row_toolbar.addWidget(self.remove_row_button)
         row_toolbar.addStretch()
+        row_toolbar.addWidget(self.preview_row_button)
         row_toolbar.addWidget(self.export_current_button)
         row_toolbar.addWidget(self.export_all_button)
         layout.addLayout(row_toolbar)
@@ -126,6 +131,7 @@ class ThumbforgeDocker(DockWidget):
         self.export_csv_button.clicked.connect(self.export_csv)
         self.add_row_button.clicked.connect(self.add_row)
         self.remove_row_button.clicked.connect(self.remove_selected_row)
+        self.preview_row_button.clicked.connect(self.preview_row)
         self.export_current_button.clicked.connect(self.export_current)
         self.export_all_button.clicked.connect(self.export_all)
         self.mapping_table.itemChanged.connect(self._mapping_changed)
@@ -316,6 +322,20 @@ class ThumbforgeDocker(DockWidget):
         except Exception as exc:
             self._show_error(exc)
 
+    def preview_row(self):
+        self._sync_rows_from_table()
+        row = self.variables_table.currentRow()
+        if row < 0 or row >= len(self.rows):
+            self.status_label.setText("No row selected.")
+            return
+        try:
+            output_path = os.path.join(tempfile.gettempdir(), "thumbforge_preview.png")
+            self._exporter().export_job(self._active_template_path(), self.rows[row], output_path)
+            self._show_preview_dialog(output_path)
+            self.status_label.setText("Rendered preview for selected row.")
+        except Exception as exc:
+            self._show_error(exc)
+
     def export_current(self):
         self._sync_rows_from_table()
         row = self.variables_table.currentRow()
@@ -408,6 +428,18 @@ class ThumbforgeDocker(DockWidget):
             message += "\n\nFailed " + str(report.failed) + " row(s):\n"
             message += "\n".join(report.failures[:8])
         return message
+
+    def _show_preview_dialog(self, image_path: str):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Thumbforge Preview")
+        layout = QVBoxLayout(dialog)
+        label = QLabel()
+        pixmap = QPixmap(image_path)
+        if not pixmap.isNull():
+            label.setPixmap(pixmap.scaledToWidth(720))
+        layout.addWidget(label)
+        dialog.resize(760, 520)
+        dialog.exec_()
 
     def _show_error(self, exc: Exception):
         self.status_label.setText("Error: " + str(exc))
