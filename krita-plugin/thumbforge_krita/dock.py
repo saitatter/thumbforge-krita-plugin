@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QInputDialog,
     QMessageBox,
     QApplication,
     QDialog,
@@ -132,6 +133,8 @@ class ThumbforgeDocker(DockWidget):
         row_toolbar = QHBoxLayout()
         self.add_row_button = QPushButton("+ Row")
         self.remove_row_button = QPushButton("- Row")
+        self.add_column_button = QPushButton("+ Column")
+        self.remove_column_button = QPushButton("- Column")
         self.paste_rows_button = QPushButton("Paste Rows")
         self.preview_row_button = QPushButton("Preview Row")
         self.export_current_button = QPushButton("Export Current")
@@ -139,6 +142,8 @@ class ThumbforgeDocker(DockWidget):
         self.export_all_button = QPushButton("Export All")
         row_toolbar.addWidget(self.add_row_button)
         row_toolbar.addWidget(self.remove_row_button)
+        row_toolbar.addWidget(self.add_column_button)
+        row_toolbar.addWidget(self.remove_column_button)
         row_toolbar.addWidget(self.paste_rows_button)
         row_toolbar.addStretch()
         row_toolbar.addWidget(self.preview_row_button)
@@ -166,6 +171,8 @@ class ThumbforgeDocker(DockWidget):
         self.export_csv_button.clicked.connect(self.export_csv)
         self.add_row_button.clicked.connect(self.add_row)
         self.remove_row_button.clicked.connect(self.remove_selected_row)
+        self.add_column_button.clicked.connect(self.add_column)
+        self.remove_column_button.clicked.connect(self.remove_selected_column)
         self.paste_rows_button.clicked.connect(self.paste_rows)
         self.preview_row_button.clicked.connect(self.preview_row)
         self.export_current_button.clicked.connect(self.export_current)
@@ -355,6 +362,34 @@ class ThumbforgeDocker(DockWidget):
         if selected < len(self.rows):
             self.rows.pop(selected)
             self._refresh_variables_table()
+
+    def add_column(self):
+        name, accepted = QInputDialog.getText(self, "Add Column", "Column name")
+        name = name.strip()
+        if not accepted or not name:
+            return
+        if name in self.columns:
+            self.status_label.setText("Column already exists: " + name)
+            return
+        self._sync_rows_from_table()
+        self.columns.append(name)
+        for row in self.rows:
+            row[name] = ""
+        self._refresh_variables_table()
+
+    def remove_selected_column(self):
+        column = self.variables_table.currentColumn()
+        if column < 0 or column >= len(self.columns):
+            return
+        name = self.columns[column]
+        if name == "episode":
+            self.status_label.setText("The episode column cannot be removed.")
+            return
+        self._sync_rows_from_table()
+        self.columns.pop(column)
+        for row in self.rows:
+            row.pop(name, None)
+        self._refresh_variables_table()
 
     def import_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import CSV", "", "CSV (*.csv);;All Files (*)")
