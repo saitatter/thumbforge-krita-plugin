@@ -1,0 +1,62 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.env
+.venv
+venv/
+ENV/
+env/
+.python-version
+
+# PySide / Qt
+*.qmlc
+*.qmlcache
+.qmake.stash
+*.pro.user
+*.pro.user.*
+build/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs / Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# Logs
+*.log
+
+# Packaging / installers
+*.spec
+!thumbforge.spec
+!thumbforge-portable.spec
+
+# PyInstaller
+*.manifest
+*.toc
+
+# Coverage / testing
+.coverage
+.pytest_cache/
+
+# Node / leftovers
+node_modules/
+
+# Misc
+.cache/
+.mypy_cache/
+
+# Generated thumbnails
+output/

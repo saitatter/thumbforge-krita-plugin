@@ -1,0 +1,196 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.semantic-release.outputs.released || 'false' }}
+      tag: ${{ steps.semantic-release.outputs.tag }}
+      version: ${{ steps.semantic-release.outputs.version }}
+      commit_sha: ${{ steps.semantic-release.outputs.commit_sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Semantic release
+        id: semantic-release
+        uses: python-semantic-release/python-semantic-release@v10.5.3
+        with:
+          changelog: true
+          github_token: ${{ secrets.RELEASE_PAT }}
+          git_committer_name: github-actions[bot]
+          git_committer_email: 41898282+github-actions[bot]@users.noreply.github.com
+          build: false
+
+  build-release-assets:
+    needs: release
+    if: ${{ needs.release.outputs.released == 'true' }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            archive_name: thumbforge-windows.zip
+            installer_name: thumbforge-windows-installer.exe
+            portable_name: thumbforge-windows-portable.exe
+          - os: ubuntu-latest
+            archive_name: thumbforge-linux.tar.gz
+            installer_name: thumbforge-linux.deb
+            portable_name: thumbforge-linux-portable
+          - os: macos-latest
+            archive_name: thumbforge-macos.tar.gz
+            installer_name: thumbforge-macos.pkg
+            portable_name: thumbforge-macos-portable
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.commit_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --noconfirm thumbforge.spec
+
+      - name: Build portable executable
+        run: pyinstaller --noconfirm thumbforge-portable.spec
+
+      - name: Rename portable executable (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Move-Item -LiteralPath dist/thumbforge-portable.exe -Destination ${{ matrix.portable_name }} -Force
+
+      - name: Rename portable executable (Unix)
+        if: runner.os != 'Windows'
+        run: mv dist/thumbforge-portable "${{ matrix.portable_name }}"
+
+      - name: Package archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist/thumbforge -DestinationPath ${{ matrix.archive_name }}
+
+      - name: Package archive (Unix)
+        if: runner.os != 'Windows'
+        run: tar -czf "${{ matrix.archive_name }}" -C dist thumbforge
+
+      - name: Build Windows installer (Inno Setup)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          @"
+          [Setup]
+          AppId=com.saitatter.thumbforge
+          AppName=Thumbforge
+          AppVersion=${{ needs.release.outputs.version }}
+          DefaultDirName={autopf}\Thumbforge
+          DefaultGroupName=Thumbforge
+          UninstallDisplayIcon={app}\thumbforge.exe
+          OutputDir=.
+          OutputBaseFilename=thumbforge-windows-installer
+          Compression=lzma
+          SolidCompression=yes
+          ArchitecturesInstallIn64BitMode=x64compatible
+          DisableProgramGroupPage=yes
+          WizardStyle=modern
+
+          [Languages]
+          Name: "english"; MessagesFile: "compiler:Default.isl"
+
+          [Files]
+          Source: "dist\thumbforge\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprograms}\Thumbforge"; Filename: "{app}\thumbforge.exe"
+
+          [Run]
+          Filename: "{app}\thumbforge.exe"; Description: "Launch Thumbforge"; Flags: nowait postinstall skipifsilent
+          "@ | Set-Content -Path thumbforge-installer.iss -Encoding ascii
+          choco install innosetup --no-progress -y
+          iscc /Qp thumbforge-installer.iss
+
+      - name: Build Linux installer (.deb)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p pkgroot/DEBIAN
+          mkdir -p pkgroot/opt/Thumbforge
+          mkdir -p pkgroot/usr/local/bin
+          cp -R dist/thumbforge/. pkgroot/opt/Thumbforge/
+          ln -s /opt/Thumbforge/thumbforge pkgroot/usr/local/bin/thumbforge
+          cat > pkgroot/DEBIAN/control <<EOF
+          Package: thumbforge
+          Version: ${{ needs.release.outputs.version }}
+          Section: utils
+          Priority: optional
+          Architecture: amd64
+          Maintainer: Thumbforge Maintainers <noreply@github.com>
+          Description: Batch thumbnail generator with Krita template support and AI backgrounds.
+          EOF
+          dpkg-deb --build pkgroot "${{ matrix.installer_name }}"
+
+      - name: Build macOS installer (.pkg)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p pkgroot/usr/local/lib/Thumbforge
+          mkdir -p pkgroot/usr/local/bin
+          cp -R dist/thumbforge/. pkgroot/usr/local/lib/Thumbforge/
+          ln -s ../lib/Thumbforge/thumbforge pkgroot/usr/local/bin/thumbforge
+          pkgbuild \
+            --root pkgroot \
+            --identifier com.saitatter.thumbforge \
+            --version "${{ needs.release.outputs.version }}" \
+            --install-location / \
+            "${{ matrix.installer_name }}"
+
+      - name: Upload workflow artifact (archive)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive_name }}
+          path: ${{ matrix.archive_name }}
+
+      - name: Upload workflow artifact (installer)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.installer_name }}
+          path: ${{ matrix.installer_name }}
+
+      - name: Upload workflow artifact (portable)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.portable_name }}
+          path: ${{ matrix.portable_name }}
+
+      - name: Upload release asset (archive)
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: gh release upload "${{ needs.release.outputs.tag }}" "${{ matrix.archive_name }}" --clobber
+
+      - name: Upload release asset (installer)
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: gh release upload "${{ needs.release.outputs.tag }}" "${{ matrix.installer_name }}" --clobber
+
+      - name: Upload release asset (portable)
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PAT }}
+        run: gh release upload "${{ needs.release.outputs.tag }}" "${{ matrix.portable_name }}" --clobber
