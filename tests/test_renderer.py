@@ -53,11 +53,20 @@ class RendererTests(unittest.TestCase):
 
 class ProjectTests(unittest.TestCase):
     def test_project_save_and_load_round_trip(self):
-        from core.project import ThumbforgeProject
+        from core.project import ThumbforgeProject, TextLayerMapping
 
         project = ThumbforgeProject(
             name="Test Series",
+            kra_template_path="template.kra",
             variable_columns=["episode", "title"],
+            text_layer_mappings=[
+                TextLayerMapping(
+                    layer_name="Text 1",
+                    variable_name="title",
+                    svg_path="layers/text1/content.svg",
+                    source_text="Title",
+                )
+            ],
             rows=[
                 {"episode": "1", "title": "Pilot"},
                 {"episode": "2", "title": "Second"},
@@ -76,7 +85,10 @@ class ProjectTests(unittest.TestCase):
             loaded = ThumbforgeProject.load(path)
 
             self.assertEqual(loaded.name, "Test Series")
+            self.assertEqual(loaded.kra_template_path, "template.kra")
             self.assertEqual(loaded.template_config.width, 1920)
+            self.assertEqual(len(loaded.text_layer_mappings), 1)
+            self.assertEqual(loaded.text_layer_mappings[0].variable_name, "title")
             self.assertEqual(len(loaded.rows), 2)
             self.assertEqual(loaded.rows[0]["title"], "Pilot")
             self.assertEqual(len(loaded.template_config.overlays), 1)
