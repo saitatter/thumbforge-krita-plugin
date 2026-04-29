@@ -19,4 +19,5 @@ Then restart Krita, enable **Thumbforge** in `Settings > Configure Krita > Pytho
 3. Click `Detect Text`.
 4. Rename mapping variables if needed.
 5. Import a CSV or add rows manually.
-6. Export the selected row or export all rows.
+6. Click `Save Setup` to persist mappings and rows inside the `.kra`.
+7. Export the selected row or export all rows.

@@ -1,18 +1,9 @@
 [project]
-name = "thumbforge"
+name = "thumbforge-krita-plugin"
 version = "0.1.0"
-description = "Batch thumbnail generator with Krita template support and AI background generation"
+description = "Krita plugin for batch-exporting thumbnail template variants"
 requires-python = ">=3.10"
-dependencies = [
-    "PySide6",
-    "Pillow",
-    "lxml",
-]
-
-[project.optional-dependencies]
-ai = [
-    "requests",
-]
+dependencies = []
 
 [tool.semantic_release]
 version_toml = ["pyproject.toml:project.version"]

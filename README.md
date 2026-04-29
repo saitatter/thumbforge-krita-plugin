@@ -1,60 +1,26 @@
-# Thumbforge
+# Thumbforge Krita Plugin
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Made with Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
-[![PySide6/Qt](https://img.shields.io/badge/PySide6-Qt6-41CD52?logo=qt&logoColor=white)](https://doc.qt.io/qtforpython-6/)
+Thumbforge is now a Krita plugin for batch-exporting thumbnail variants from a saved `.kra` template.
 
-Batch thumbnail generator with Krita template support and AI background generation.
+## Features
 
-## ✨ Features
+- Detect vector text shapes in the active Krita document.
+- Map text shapes to CSV/table variables.
+- Save and load Thumbforge setup directly inside the `.kra` file.
+- Import/export variable CSV files.
+- Batch export PNG thumbnails with configurable compression, alpha, sRGB, ICC, and interlace options.
+- Validate duplicate output filenames and missing variable columns before exporting.
 
-### 🎨 Template System
-- Load `.kra` (Krita) templates — parse layers without requiring Krita at runtime
-- Define variable text layers (episode number, title, date, etc.)
-- Live preview with real-time variable substitution
+## Install Locally
 
-### 📋 Batch Export
-- Table-based variable editor — one row per thumbnail
-- Batch export to PNG with customizable filename patterns
-- CSV import for bulk variable sets
-
-### 🤖 AI Backgrounds (optional)
-- Generate backgrounds via ComfyUI / Stable Diffusion WebUI API
-- Per-episode prompt customization
-
-### 🖥️ Desktop UI
-- Built with PySide6 / Qt6
-- Cross-platform: Windows, macOS, Linux
-
-## 🚀 Quick Start
-
-### Run from source
-
-```bash
-git clone https://github.com/saitatter/thumbforge.git
-cd thumbforge
-python -m venv venv
-venv\Scripts\activate       # Windows
-# source venv/bin/activate  # macOS / Linux
-pip install -r requirements.txt
-python main.py
+```powershell
+.\scripts\install-krita-plugin.ps1
 ```
 
-### Build standalone executable
+Then restart Krita, enable **Thumbforge** in `Settings > Configure Krita > Python Plugin Manager`, restart Krita again, and open it from `Settings > Dockers > Thumbforge`.
 
-```bash
-pip install pyinstaller
-pyinstaller --noconfirm thumbforge.spec
-# Portable single-file:
-pyinstaller --noconfirm thumbforge-portable.spec
+## Test
+
+```powershell
+python -m pytest
 ```
-
-## 🤝 Contributing
-
-PRs are welcome! Please:
-- Keep commits small and conventional.
-- Run `python -m pytest tests/` before submitting.
-
-## 📄 License
-
-MIT © saitatter
