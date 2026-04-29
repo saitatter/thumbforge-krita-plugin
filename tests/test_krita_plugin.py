@@ -66,7 +66,7 @@ def test_project_store_round_trips_setup():
     project_store = _load_plugin_module("project_store")
 
     payload = project_store.serialize_project(
-        mappings=[models.TextMapping("Layer", "Old", "title")],
+        mappings=[models.TextMapping("Layer", "Old", "title", "shape0")],
         columns=["episode", "title"],
         rows=[{"episode": "1", "title": "New"}],
         name_pattern="ep_{episode}",
@@ -75,6 +75,7 @@ def test_project_store_round_trips_setup():
     loaded = project_store.deserialize_project(payload)
 
     assert loaded["mappings"][0].layer_name == "Layer"
+    assert loaded["mappings"][0].shape_name == "shape0"
     assert loaded["columns"] == ["episode", "title"]
     assert loaded["rows"][0]["title"] == "New"
     assert loaded["name_pattern"] == "ep_{episode}"

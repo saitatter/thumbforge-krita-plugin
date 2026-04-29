@@ -93,8 +93,8 @@ class ThumbforgeDocker(DockWidget):
 
         mapping_group = QGroupBox("Text Layer Mappings")
         mapping_layout = QVBoxLayout(mapping_group)
-        self.mapping_table = QTableWidget(0, 3)
-        self.mapping_table.setHorizontalHeaderLabels(["Layer", "Source Text", "Variable"])
+        self.mapping_table = QTableWidget(0, 4)
+        self.mapping_table.setHorizontalHeaderLabels(["Layer", "Shape", "Source Text", "Variable"])
         self.mapping_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         mapping_layout.addWidget(self.mapping_table)
         layout.addWidget(mapping_group)
@@ -161,7 +161,14 @@ class ThumbforgeDocker(DockWidget):
                     if text is None:
                         continue
                     variable_name = "text_" + str(len(self.mappings) + 1)
-                    self.mappings.append(TextMapping(node.name(), text, variable_name))
+                    self.mappings.append(
+                        TextMapping(
+                            layer_name=node.name(),
+                            shape_name=shape.name(),
+                            source_text=text,
+                            variable_name=variable_name,
+                        )
+                    )
                     if variable_name not in self.columns:
                         self.columns.append(variable_name)
             self._refresh_mapping_table()
@@ -195,8 +202,9 @@ class ThumbforgeDocker(DockWidget):
                 row = self.mapping_table.rowCount()
                 self.mapping_table.insertRow(row)
                 self.mapping_table.setItem(row, 0, QTableWidgetItem(mapping.layer_name))
-                self.mapping_table.setItem(row, 1, QTableWidgetItem(mapping.source_text))
-                self.mapping_table.setItem(row, 2, QTableWidgetItem(mapping.variable_name))
+                self.mapping_table.setItem(row, 1, QTableWidgetItem(mapping.shape_name))
+                self.mapping_table.setItem(row, 2, QTableWidgetItem(mapping.source_text))
+                self.mapping_table.setItem(row, 3, QTableWidgetItem(mapping.variable_name))
         finally:
             self.mapping_table.blockSignals(False)
 
@@ -220,8 +228,9 @@ class ThumbforgeDocker(DockWidget):
             return
         mapping = self.mappings[row]
         mapping.layer_name = self.mapping_table.item(row, 0).text().strip()
-        mapping.source_text = self.mapping_table.item(row, 1).text()
-        mapping.variable_name = self.mapping_table.item(row, 2).text().strip()
+        mapping.shape_name = self.mapping_table.item(row, 1).text().strip()
+        mapping.source_text = self.mapping_table.item(row, 2).text()
+        mapping.variable_name = self.mapping_table.item(row, 3).text().strip()
         if mapping.variable_name and mapping.variable_name not in self.columns:
             self.columns.append(mapping.variable_name)
             self._refresh_variables_table()

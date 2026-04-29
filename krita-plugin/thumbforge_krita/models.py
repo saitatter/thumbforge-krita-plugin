@@ -11,6 +11,7 @@ class TextMapping:
     layer_name: str
     source_text: str
     variable_name: str
+    shape_name: str = ""
 
 
 @dataclass

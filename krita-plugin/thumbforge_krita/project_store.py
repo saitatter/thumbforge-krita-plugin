@@ -34,7 +34,7 @@ def serialize_project(
 
 def deserialize_project(payload: str) -> dict:
     data = json.loads(payload)
-    mappings = [TextMapping(**item) for item in data.get("mappings", [])]
+    mappings = [TextMapping(**_upgrade_mapping(item)) for item in data.get("mappings", [])]
     settings = PngExportSettings(**data.get("png_settings", {}))
     return {
         "mappings": mappings,
@@ -43,6 +43,12 @@ def deserialize_project(payload: str) -> dict:
         "name_pattern": data.get("name_pattern", "thumb_{episode}"),
         "png_settings": settings,
     }
+
+
+def _upgrade_mapping(item: dict) -> dict:
+    upgraded = dict(item)
+    upgraded.setdefault("shape_name", "")
+    return upgraded
 
 
 def save_project_to_document(

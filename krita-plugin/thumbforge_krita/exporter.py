@@ -59,20 +59,25 @@ class KritaTemplateExporter:
             node = doc.nodeByName(layer_name)
             if node is None:
                 raise RuntimeError("Layer not found: " + layer_name)
-            svg = node.toSvg()
-            matched_any = False
             for mapping in mappings:
-                value = variables.get(mapping.variable_name, "")
-                svg, matched = replace_text_shape(svg, mapping.source_text, value)
-                matched_any = matched_any or matched
-            if not matched_any:
-                raise RuntimeError("No matching text shape found in layer: " + layer_name)
-            for shape in list(node.shapes()):
-                shape.setVisible(False)
-                shape.update()
+                self._apply_mapping_to_layer(node, mapping, variables)
+
+    def _apply_mapping_to_layer(self, node, mapping: TextMapping, variables: dict[str, str]) -> None:
+        value = variables.get(mapping.variable_name, "")
+        for shape in list(node.shapes()):
+            if mapping.shape_name and shape.name() != mapping.shape_name:
+                continue
+            svg, matched = replace_text_shape(shape.toSvg(), mapping.source_text, value)
+            if not matched:
+                continue
+            shape.setVisible(False)
+            shape.update()
             added = node.addShapesFromSvg(svg)
             if not added:
-                raise RuntimeError("Krita did not add replacement text for layer: " + layer_name)
+                raise RuntimeError("Krita did not add replacement text for layer: " + mapping.layer_name)
+            return
+        detail = mapping.shape_name or mapping.source_text or mapping.variable_name
+        raise RuntimeError("No matching text shape found: " + mapping.layer_name + " / " + detail)
 
     def _png_export_options(self):
         options = InfoObject()
