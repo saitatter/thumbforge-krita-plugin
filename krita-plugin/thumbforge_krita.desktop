@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=thumbforge_krita
+X-Python-2-Compatible=false
+Name=Thumbforge
+Comment=Batch-export thumbnails from Krita text templates.
