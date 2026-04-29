@@ -132,12 +132,14 @@ class ThumbforgeDocker(DockWidget):
         row_toolbar = QHBoxLayout()
         self.add_row_button = QPushButton("+ Row")
         self.remove_row_button = QPushButton("- Row")
+        self.paste_rows_button = QPushButton("Paste Rows")
         self.preview_row_button = QPushButton("Preview Row")
         self.export_current_button = QPushButton("Export Current")
         self.export_selected_button = QPushButton("Export Selected")
         self.export_all_button = QPushButton("Export All")
         row_toolbar.addWidget(self.add_row_button)
         row_toolbar.addWidget(self.remove_row_button)
+        row_toolbar.addWidget(self.paste_rows_button)
         row_toolbar.addStretch()
         row_toolbar.addWidget(self.preview_row_button)
         row_toolbar.addWidget(self.export_current_button)
@@ -164,6 +166,7 @@ class ThumbforgeDocker(DockWidget):
         self.export_csv_button.clicked.connect(self.export_csv)
         self.add_row_button.clicked.connect(self.add_row)
         self.remove_row_button.clicked.connect(self.remove_selected_row)
+        self.paste_rows_button.clicked.connect(self.paste_rows)
         self.preview_row_button.clicked.connect(self.preview_row)
         self.export_current_button.clicked.connect(self.export_current)
         self.export_selected_button.clicked.connect(self.export_selected)
@@ -365,6 +368,21 @@ class ThumbforgeDocker(DockWidget):
             self.rows = rows
             self._refresh_variables_table()
             self.status_label.setText("Imported " + str(len(rows)) + " row(s).")
+        except Exception as exc:
+            self._show_error(exc)
+
+    def paste_rows(self):
+        try:
+            from .table_data import parse_clipboard_table
+
+            text = QApplication.clipboard().text()
+            columns, rows = parse_clipboard_table(text, self.columns)
+            for column in columns:
+                if column not in self.columns:
+                    self.columns.append(column)
+            self.rows.extend(rows)
+            self._refresh_variables_table()
+            self.status_label.setText("Pasted " + str(len(rows)) + " row(s).")
         except Exception as exc:
             self._show_error(exc)
 

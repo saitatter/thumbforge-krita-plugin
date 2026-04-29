@@ -125,3 +125,12 @@ def test_validation_sanitizes_and_detects_duplicate_outputs():
     assert paths[0].endswith("A_B\\thumb_1.png") or paths[0].endswith("A_B/thumb_1.png")
     assert paths[1].endswith("A_B\\thumb_1_2.png") or paths[1].endswith("A_B/thumb_1_2.png")
     assert not any("same filename" in issue.message for issue in issues)
+
+
+def test_parse_clipboard_table_with_header():
+    table_data = _load_plugin_module("table_data")
+
+    columns, rows = table_data.parse_clipboard_table("episode\ttitle\n1\tHello", ["episode"])
+
+    assert columns == ["episode", "title"]
+    assert rows == [{"episode": "1", "title": "Hello"}]
