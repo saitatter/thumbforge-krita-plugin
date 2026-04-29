@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QPushButton,
@@ -32,9 +33,13 @@ class VariablesTable(QWidget):
         self.btn_add = QPushButton("+ Add Row")
         self.btn_remove = QPushButton("- Remove Row")
         self.btn_add_col = QPushButton("+ Add Column")
+        self.btn_import_csv = QPushButton("Import CSV")
+        self.btn_export_csv = QPushButton("Export CSV")
         btn_row.addWidget(self.btn_add)
         btn_row.addWidget(self.btn_remove)
         btn_row.addWidget(self.btn_add_col)
+        btn_row.addWidget(self.btn_import_csv)
+        btn_row.addWidget(self.btn_export_csv)
         btn_row.addStretch()
         layout.addLayout(btn_row)
 
@@ -51,6 +56,8 @@ class VariablesTable(QWidget):
         self.btn_add.clicked.connect(self._add_row)
         self.btn_remove.clicked.connect(self._remove_row)
         self.btn_add_col.clicked.connect(self._add_column)
+        self.btn_import_csv.clicked.connect(self._import_csv)
+        self.btn_export_csv.clicked.connect(self._export_csv)
         self.table.currentCellChanged.connect(self._on_selection)
 
     def refresh_from_project(self):
@@ -114,3 +121,35 @@ class VariablesTable(QWidget):
             if d is not None:
                 rows.append(d)
         return rows
+
+    def _import_csv(self):
+        from core.csv_io import read_variable_csv
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Import Variables CSV",
+            "",
+            "CSV Files (*.csv);;All Files (*)",
+        )
+        if not path:
+            return
+        columns, rows = read_variable_csv(path)
+        if not columns:
+            return
+        self.project.variable_columns = columns
+        self.project.rows = rows
+        self.refresh_from_project()
+
+    def _export_csv(self):
+        from core.csv_io import write_variable_csv
+
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Variables CSV",
+            "variables.csv",
+            "CSV Files (*.csv);;All Files (*)",
+        )
+        if not path:
+            return
+        self.project.rows = self.all_variables()
+        write_variable_csv(path, self.project.variable_columns, self.project.rows)
