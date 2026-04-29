@@ -22,6 +22,20 @@ class PngExportSettings:
     interlaced: bool = False
 
 
+@dataclass
+class ExportReport:
+    exported: list[str]
+    failures: list[str]
+
+    @property
+    def succeeded(self) -> int:
+        return len(self.exported)
+
+    @property
+    def failed(self) -> int:
+        return len(self.failures)
+
+
 def ensure_png_path(path: str) -> str:
     if os.path.splitext(path)[1]:
         return path

@@ -24,9 +24,10 @@ from PyQt5.QtWidgets import (
 
 from .csv_io import read_variable_csv, write_variable_csv
 from .exporter import KritaTemplateExporter
-from .models import PngExportSettings, TextMapping, ensure_png_path, substitute
+from .models import ExportReport, PngExportSettings, TextMapping, ensure_png_path
 from .project_store import load_project_from_document, save_project_to_document
 from .text_replace import plain_text
+from .validation import build_output_path, validate_export_plan
 
 
 class ThumbforgeDocker(DockWidget):
@@ -339,12 +340,32 @@ class ThumbforgeDocker(DockWidget):
             return
         try:
             template_path = self._active_template_path()
+            issues = validate_export_plan(
+                mappings=self.mappings,
+                columns=self.columns,
+                rows=self.rows,
+                output_dir=output_dir,
+                name_pattern=self.name_pattern_edit.text().strip() or "thumb_{episode}",
+            )
+            errors = [issue.message for issue in issues if issue.level == "error"]
+            if errors:
+                QMessageBox.warning(self, "Thumbforge", "\n".join(errors))
+                return
+            report = ExportReport(exported=[], failures=[])
+            exporter = self._exporter()
             for index, variables in enumerate(self.rows, start=1):
-                name = substitute(self.name_pattern_edit.text().strip() or "thumb_{episode}", variables)
-                output_path = ensure_png_path(os.path.join(output_dir, name))
-                self._exporter().export_job(template_path, variables, output_path)
+                output_path = build_output_path(
+                    output_dir,
+                    self.name_pattern_edit.text().strip() or "thumb_{episode}",
+                    variables,
+                )
+                try:
+                    exporter.export_job(template_path, variables, output_path)
+                    report.exported.append(output_path)
+                except Exception as exc:
+                    report.failures.append("Row " + str(index) + ": " + str(exc))
                 self.status_label.setText("Exported " + str(index) + "/" + str(len(self.rows)))
-            QMessageBox.information(self, "Thumbforge", "Exported " + str(len(self.rows)) + " thumbnail(s).")
+            QMessageBox.information(self, "Thumbforge", self._format_report(report))
         except Exception as exc:
             self._show_error(exc)
 
@@ -366,6 +387,13 @@ class ThumbforgeDocker(DockWidget):
         self.force_srgb_check.setChecked(settings.force_srgb)
         self.save_icc_check.setChecked(settings.save_icc)
         self.interlaced_check.setChecked(settings.interlaced)
+
+    def _format_report(self, report: ExportReport) -> str:
+        message = "Exported " + str(report.succeeded) + " thumbnail(s)."
+        if report.failures:
+            message += "\n\nFailed " + str(report.failed) + " row(s):\n"
+            message += "\n".join(report.failures[:8])
+        return message
 
     def _show_error(self, exc: Exception):
         self.status_label.setText("Error: " + str(exc))

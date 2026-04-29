@@ -80,3 +80,20 @@ def test_project_store_round_trips_setup():
     assert loaded["name_pattern"] == "ep_{episode}"
     assert loaded["png_settings"].compression == 4
     assert loaded["png_settings"].alpha is False
+
+
+def test_validation_sanitizes_and_detects_duplicate_outputs():
+    models = _load_plugin_module("models")
+    validation = _load_plugin_module("validation")
+
+    path = validation.build_output_path("out", "bad:name_{episode}", {"episode": "1"})
+    issues = validation.validate_export_plan(
+        mappings=[models.TextMapping("Layer", "Old", "title")],
+        columns=["episode", "title"],
+        rows=[{"episode": "1", "title": "A"}, {"episode": "1", "title": "B"}],
+        output_dir="out",
+        name_pattern="thumb_{episode}",
+    )
+
+    assert path.endswith("bad_name_1.png")
+    assert any("same filename" in issue.message for issue in issues)
