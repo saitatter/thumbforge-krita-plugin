@@ -323,7 +323,8 @@ import traceback
 from collections import defaultdict
 
 from krita import Krita, InfoObject
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtCore import QTimer
+from PyQt5.QtWidgets import QApplication, QDialog, QMessageBox
 
 
 def write_log(message):
@@ -332,6 +333,24 @@ def write_log(message):
             handle.write(message + "\\n")
     except Exception:
         pass
+
+
+def accept_export_dialogs():
+    app = QApplication.instance()
+    if app is None:
+        return
+    for widget in app.topLevelWidgets():
+        if not widget.isVisible():
+            continue
+        if isinstance(widget, (QDialog, QMessageBox)):
+            write_log("Accepting Krita dialog: " + widget.windowTitle())
+            try:
+                widget.accept()
+            except Exception:
+                try:
+                    widget.done(QDialog.Accepted)
+                except Exception:
+                    pass
 
 
 LOG_PATH = ""
@@ -430,8 +449,11 @@ def run(*args):
     LOG_PATH = manifest.get("log", "")
     app = Krita.instance()
     mappings = manifest.get("mappings", [])
+    dialog_timer = None
 
     try:
+        dialog_timer = QTimer()
+        dialog_timer.timeout.connect(accept_export_dialogs)
         for job in manifest["jobs"]:
             write_log("Opening " + job["template"])
             doc = app.openDocument(job["template"])
@@ -448,7 +470,9 @@ def run(*args):
             except Exception:
                 pass
             write_log("Exporting " + job["output"])
+            dialog_timer.start(100)
             ok = doc.exportImage(job["output"], InfoObject())
+            dialog_timer.stop()
             try:
                 doc.waitForDone()
             except Exception:
@@ -458,9 +482,13 @@ def run(*args):
             doc.close()
         write_log("Done")
     except Exception:
+        if dialog_timer is not None:
+            dialog_timer.stop()
         write_log(traceback.format_exc())
         raise
     finally:
+        if dialog_timer is not None:
+            dialog_timer.stop()
         qt_app = QApplication.instance()
         if qt_app is not None:
             qt_app.quit()
