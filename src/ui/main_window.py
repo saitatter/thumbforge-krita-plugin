@@ -148,7 +148,16 @@ class MainWindow(QMainWindow):
                 self.variables_table.refresh_from_project()
                 if template.merged_preview:
                     self.preview.set_image(template.merged_preview)
-                self.statusBar().showMessage(f"Template: {template.name} ({template.width}x{template.height})")
+                from core.validation import validate_youtube_template
+                warnings = validate_youtube_template(
+                    template.width,
+                    template.height,
+                    self.project.text_layer_mappings,
+                )
+                suffix = f" - {warnings[0]}" if warnings else ""
+                self.statusBar().showMessage(
+                    f"Template: {template.name} ({template.width}x{template.height}){suffix}"
+                )
             except Exception as exc:
                 logger.error("Failed to load .kra: %s", exc)
                 QMessageBox.warning(self, "Error", f"Failed to load template:\n{exc}")
