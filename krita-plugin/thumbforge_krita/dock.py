@@ -7,9 +7,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 
 from krita import DockWidget, InfoObject, Krita
-from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import (
-    QDialog,
+    QCheckBox,
     QFileDialog,
     QGroupBox,
     QHBoxLayout,
@@ -18,6 +17,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -49,7 +49,6 @@ class ThumbforgeDocker(DockWidget):
         self.mappings: list[TextMapping] = []
         self.columns: list[str] = ["episode"]
         self.rows: list[dict[str, str]] = []
-        self._dialog_timer: QTimer | None = None
         self._build_ui()
         self._connect_signals()
 
@@ -74,6 +73,26 @@ class ThumbforgeDocker(DockWidget):
         self.name_pattern_edit = QLineEdit("thumb_{episode}")
         filename_row.addWidget(self.name_pattern_edit)
         layout.addLayout(filename_row)
+
+        export_group = QGroupBox("PNG Export Settings")
+        export_layout = QHBoxLayout(export_group)
+        export_layout.addWidget(QLabel("Compression"))
+        self.compression_spin = QSpinBox()
+        self.compression_spin.setRange(0, 9)
+        self.compression_spin.setValue(6)
+        export_layout.addWidget(self.compression_spin)
+        self.alpha_check = QCheckBox("Alpha")
+        self.alpha_check.setChecked(True)
+        self.force_srgb_check = QCheckBox("sRGB")
+        self.force_srgb_check.setChecked(True)
+        self.save_icc_check = QCheckBox("ICC")
+        self.save_icc_check.setChecked(True)
+        self.interlaced_check = QCheckBox("Interlaced")
+        export_layout.addWidget(self.alpha_check)
+        export_layout.addWidget(self.force_srgb_check)
+        export_layout.addWidget(self.save_icc_check)
+        export_layout.addWidget(self.interlaced_check)
+        layout.addWidget(export_group)
 
         mapping_group = QGroupBox("Text Layer Mappings")
         mapping_layout = QVBoxLayout(mapping_group)
@@ -294,6 +313,8 @@ class ThumbforgeDocker(DockWidget):
             self._show_error(exc)
 
     def _export_job(self, template_path: str, variables: dict[str, str], output_path: str):
+        app = Krita.instance()
+        old_batchmode = False
         doc = Krita.instance().openDocument(template_path)
         if doc is None:
             raise RuntimeError("Krita could not open " + template_path)
@@ -305,9 +326,17 @@ class ThumbforgeDocker(DockWidget):
             self._apply_variables(doc, variables)
             doc.refreshProjection()
             doc.waitForDone()
-            self._start_dialog_timer()
-            ok = doc.exportImage(output_path, InfoObject())
-            self._stop_dialog_timer()
+            doc.flatten()
+            doc.waitForDone()
+            doc.refreshProjection()
+            doc.waitForDone()
+            old_batchmode = app.batchmode()
+            app.setBatchmode(True)
+            try:
+                doc.setBatchmode(True)
+            except Exception:
+                pass
+            ok = doc.exportImage(output_path, self._png_export_options())
             try:
                 doc.waitForDone()
             except Exception:
@@ -315,7 +344,10 @@ class ThumbforgeDocker(DockWidget):
             if ok is False:
                 raise RuntimeError("Krita export failed for " + output_path)
         finally:
-            self._stop_dialog_timer()
+            try:
+                app.setBatchmode(old_batchmode)
+            except Exception:
+                pass
             try:
                 doc.setModified(False)
             except Exception:
@@ -326,6 +358,16 @@ class ThumbforgeDocker(DockWidget):
         if os.path.splitext(path)[1]:
             return path
         return path + ".png"
+
+    def _png_export_options(self):
+        options = InfoObject()
+        options.setProperty("alpha", self.alpha_check.isChecked())
+        options.setProperty("compression", self.compression_spin.value())
+        options.setProperty("forceSRGB", self.force_srgb_check.isChecked())
+        options.setProperty("indexed", False)
+        options.setProperty("interlaced", self.interlaced_check.isChecked())
+        options.setProperty("saveSRGBProfile", self.save_icc_check.isChecked())
+        return options
 
     def _apply_variables(self, doc, variables: dict[str, str]):
         mappings_by_layer = defaultdict(list)
@@ -349,33 +391,6 @@ class ThumbforgeDocker(DockWidget):
             added = node.addShapesFromSvg(svg)
             if not added:
                 raise RuntimeError("Krita did not add replacement text for layer: " + layer_name)
-
-    def _start_dialog_timer(self):
-        self._stop_dialog_timer()
-        self._dialog_timer = QTimer()
-        self._dialog_timer.timeout.connect(self._accept_export_dialogs)
-        self._dialog_timer.start(100)
-
-    def _stop_dialog_timer(self):
-        if self._dialog_timer is not None:
-            self._dialog_timer.stop()
-            self._dialog_timer = None
-
-    def _accept_export_dialogs(self):
-        qt_app = QApplication.instance()
-        if qt_app is None:
-            return
-        for widget in qt_app.topLevelWidgets():
-            if not widget.isVisible():
-                continue
-            if isinstance(widget, (QDialog, QMessageBox)):
-                try:
-                    widget.accept()
-                except Exception:
-                    try:
-                        widget.done(QDialog.Accepted)
-                    except Exception:
-                        pass
 
     def _show_error(self, exc: Exception):
         self.status_label.setText("Error: " + str(exc))
