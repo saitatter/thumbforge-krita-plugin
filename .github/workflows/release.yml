@@ -50,9 +50,105 @@ jobs:
             $tag = "v" + $versionLine.Matches[0].Groups[1].Value
           }
           $version = $tag.TrimStart("v")
+          $previousTag = git tag --sort=-creatordate | Where-Object { $_ -ne $tag } | Select-Object -First 1
           "tag=$tag" >> $env:GITHUB_OUTPUT
           "version=$version" >> $env:GITHUB_OUTPUT
           "asset=dist/thumbforge-krita-plugin-v$version.zip" >> $env:GITHUB_OUTPUT
+          "previous_tag=$previousTag" >> $env:GITHUB_OUTPUT
+
+      - name: Generate release notes
+        id: release-notes
+        shell: pwsh
+        run: |
+          function Convert-CommitToBullet {
+            param([string]$Subject)
+
+            $clean = $Subject.Trim()
+            $clean = [regex]::Replace($clean, '^[a-z]+\([^)]*\):\s*', '')
+            $clean = [regex]::Replace($clean, '^[a-z]+:\s*', '')
+            if (-not $clean) {
+              return $null
+            }
+            return ($clean.Substring(0, 1).ToUpperInvariant() + $clean.Substring(1))
+          }
+
+          $tag = "${{ steps.release-meta.outputs.tag }}"
+          $previousTag = "${{ steps.release-meta.outputs.previous_tag }}"
+          $range = if ($previousTag) { "$previousTag..$tag" } else { $tag }
+          $commits = git log $range --pretty=format:"%s"
+          if (-not $commits) {
+            $commits = @("Release $tag")
+          }
+
+          $summary = New-Object System.Collections.Generic.List[string]
+          $features = New-Object System.Collections.Generic.List[string]
+          $fixes = New-Object System.Collections.Generic.List[string]
+          $refactors = New-Object System.Collections.Generic.List[string]
+          $build = New-Object System.Collections.Generic.List[string]
+          $tests = New-Object System.Collections.Generic.List[string]
+          $docs = New-Object System.Collections.Generic.List[string]
+
+          foreach ($subject in $commits) {
+            $bullet = Convert-CommitToBullet -Subject $subject
+            if (-not $bullet) {
+              continue
+            }
+            $summary.Add("• " + $bullet)
+
+            if ($subject -match '^feat(\(|:)' ) {
+              $features.Add("• " + $bullet)
+            } elseif ($subject -match '^fix(\(|:)' ) {
+              $fixes.Add("• " + $bullet)
+            } elseif ($subject -match '^refactor(\(|:)' ) {
+              $refactors.Add("• " + $bullet)
+            } elseif ($subject -match '^(ci|build|chore)(\(|:)' ) {
+              $build.Add("• " + $bullet)
+            } elseif ($subject -match '^test(\(|:)' ) {
+              $tests.Add("• " + $bullet)
+            } elseif ($subject -match '^docs(\(|:)' ) {
+              $docs.Add("• " + $bullet)
+            } else {
+              $fixes.Add("• " + $bullet)
+            }
+          }
+
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          $lines = New-Object System.Collections.Generic.List[string]
+          $lines.Add('## What''s Changed')
+          $lines.Add('')
+          foreach ($line in ($summary | Select-Object -Unique | Select-Object -First 4)) {
+            $lines.Add($line)
+          }
+
+          $sections = @(
+            @{ Title = '### ✨ Features'; Items = $features },
+            @{ Title = '### 🐛 Fixes'; Items = $fixes },
+            @{ Title = '### ♻️ Refactors'; Items = $refactors },
+            @{ Title = '### 🧰 CI & Build'; Items = $build },
+            @{ Title = '### 🧪 Tests'; Items = $tests },
+            @{ Title = '### 📝 Docs'; Items = $docs }
+          )
+
+          foreach ($section in $sections) {
+            if ($section.Items.Count -eq 0) {
+              continue
+            }
+            $lines.Add('')
+            $lines.Add($section.Title)
+            $lines.Add('')
+            foreach ($item in ($section.Items | Select-Object -Unique)) {
+              $lines.Add($item)
+            }
+          }
+
+          if ($previousTag) {
+            $lines.Add('')
+            $lines.Add('Full Changelog:')
+            $lines.Add("https://github.com/${{ github.repository }}/compare/$previousTag...$tag")
+          }
+
+          $lines | Set-Content -LiteralPath $notesPath -Encoding utf8
+          "path=$notesPath" >> $env:GITHUB_OUTPUT
 
       - name: Package Krita plugin
         shell: pwsh
@@ -73,9 +169,11 @@ jobs:
         run: |
           $tag = "${{ steps.release-meta.outputs.tag }}"
           $asset = "${{ steps.release-meta.outputs.asset }}"
+          $notes = "${{ steps.release-notes.outputs.path }}"
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
+            gh release edit $tag --title "Thumbforge Krita Plugin $tag" --notes-file $notes
             gh release upload $tag $asset --clobber
           } else {
-            gh release create $tag $asset --target $env:GITHUB_SHA --title "Thumbforge Krita Plugin $tag" --generate-notes
+            gh release create $tag $asset --target $env:GITHUB_SHA --title "Thumbforge Krita Plugin $tag" --notes-file $notes
           }
