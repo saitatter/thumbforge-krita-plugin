@@ -79,17 +79,49 @@ class KritaTemplateExporter:
         for shape in list(node.shapes()):
             if mapping.shape_name and shape.name() != mapping.shape_name:
                 continue
-            svg, matched = replace_text_shape(shape.toSvg(), mapping.source_text, value)
-            if not matched:
-                continue
-            shape.setVisible(False)
-            shape.update()
-            added = node.addShapesFromSvg(svg)
-            if not added:
+            matched = False
+            for label, source_svg in self._shape_svg_candidates(shape):
+                svg, candidate_matched = replace_text_shape(source_svg, mapping.source_text, value)
+                if not candidate_matched:
+                    continue
+                matched = True
+                added = node.addShapesFromSvg(svg)
+                if added:
+                    shape.setVisible(False)
+                    shape.update()
+                    return
+                log(
+                    "SVG import failed for layer "
+                    + mapping.layer_name
+                    + " shape "
+                    + (mapping.shape_name or "<unnamed>")
+                    + " using "
+                    + label
+                    + " serialization."
+                )
+            if matched:
                 raise RuntimeError("Krita did not add replacement text for layer: " + mapping.layer_name)
-            return
         detail = mapping.shape_name or mapping.source_text or mapping.variable_name
         raise RuntimeError("No matching text shape found: " + mapping.layer_name + " / " + detail)
+
+    def _shape_svg_candidates(self, shape):
+        seen: set[str] = set()
+        variants = [
+            ("styled text", (True, False)),
+            ("default", ()),
+        ]
+        for label, args in variants:
+            try:
+                svg = shape.toSvg(*args)
+            except TypeError:
+                continue
+            except Exception as exc:
+                log("Could not serialize shape SVG with " + label + ": " + str(exc))
+                continue
+            if not svg or svg in seen:
+                continue
+            seen.add(svg)
+            yield label, svg
 
     def _png_export_options(self):
         options = InfoObject()

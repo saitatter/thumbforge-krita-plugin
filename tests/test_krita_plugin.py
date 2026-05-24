@@ -45,6 +45,8 @@ def test_plugin_descriptor_exists():
 
     assert "ServiceTypes=Krita/PythonPlugin" in desktop
     assert "X-KDE-Library=thumbforge_krita" in desktop
+    assert "X-Krita-Manual=Manual.html" in desktop
+    assert (PLUGIN_ROOT / "thumbforge_krita" / "Manual.html").exists()
 
 
 def test_replace_text_shape_preserves_tspan_attributes():
