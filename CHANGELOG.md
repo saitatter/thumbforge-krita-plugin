@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3 - 2026-05-25
+
+- Preserve document-sized SVG viewport metadata in wrapped text-shape fallbacks to avoid smaller exported text.
+- Log which SVG import variant succeeds so Krita text replacement regressions are easier to diagnose.
+
 ## 0.1.2 - 2026-05-25
 
 - Expanded Krita text-shape SVG fallback handling to try additional serialization modes during export.

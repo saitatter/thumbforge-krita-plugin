@@ -76,21 +76,30 @@ class KritaTemplateExporter:
             if node is None:
                 raise RuntimeError("Layer not found: " + layer_name)
             for mapping in mappings:
-                self._apply_mapping_to_layer(node, mapping, variables)
+                self._apply_mapping_to_layer(doc, node, mapping, variables)
 
-    def _apply_mapping_to_layer(self, node, mapping: TextMapping, variables: dict[str, str]) -> None:
+    def _apply_mapping_to_layer(self, doc, node, mapping: TextMapping, variables: dict[str, str]) -> None:
         value = variables.get(mapping.variable_name, "")
         for shape in list(node.shapes()):
             if mapping.shape_name and shape.name() != mapping.shape_name:
                 continue
             matched = False
-            for label, source_svg in self._shape_svg_candidates(shape):
+            for label, source_svg in self._shape_svg_candidates(doc, shape):
                 svg, candidate_matched = replace_text_shape(source_svg, mapping.source_text, value)
                 if not candidate_matched:
                     continue
                 matched = True
                 added = node.addShapesFromSvg(svg)
                 if added:
+                    log(
+                        "SVG import succeeded for layer "
+                        + mapping.layer_name
+                        + " shape "
+                        + (mapping.shape_name or "<unnamed>")
+                        + " using "
+                        + label
+                        + " serialization."
+                    )
                     shape.setVisible(False)
                     shape.update()
                     return
@@ -110,7 +119,7 @@ class KritaTemplateExporter:
         detail = mapping.shape_name or mapping.source_text or mapping.variable_name
         raise RuntimeError("No matching text shape found: " + mapping.layer_name + " / " + detail)
 
-    def _shape_svg_candidates(self, shape):
+    def _shape_svg_candidates(self, doc, shape):
         seen: set[str] = set()
         variants = [
             ("text mode preserved", (False, False)),
@@ -126,26 +135,45 @@ class KritaTemplateExporter:
             except Exception as exc:
                 log("Could not serialize shape SVG with " + label + ": " + str(exc))
                 continue
-            for candidate_label, candidate_svg in self._normalize_svg_candidates(label, svg):
+            for candidate_label, candidate_svg in self._normalize_svg_candidates(doc, label, svg):
                 if not candidate_svg or candidate_svg in seen:
                     continue
                 seen.add(candidate_svg)
                 yield candidate_label, candidate_svg
 
-    def _normalize_svg_candidates(self, label: str, svg: str):
+    def _normalize_svg_candidates(self, doc, label: str, svg: str):
         yield label, svg
         if SVG_ROOT_RE.search(svg):
             return
+        width_pt, height_pt = self._document_size_points(doc)
         wrapped = (
             '<svg xmlns="http://www.w3.org/2000/svg" '
             'xmlns:xlink="http://www.w3.org/1999/xlink" '
             'xmlns:krita="http://krita.org/namespaces/svg/krita" '
-            'xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd">'
+            'xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd" '
+            'width="'
+            + width_pt
+            + 'pt" height="'
+            + height_pt
+            + 'pt" viewBox="0 0 '
+            + width_pt
+            + ' '
+            + height_pt
+            + '">'
             '<defs/>'
             + svg
             + '</svg>'
         )
         yield label + " wrapped", wrapped
+
+    def _document_size_points(self, doc) -> tuple[str, str]:
+        resolution = float(doc.resolution() or 72.0)
+        width_pt = (float(doc.width()) * 72.0) / resolution
+        height_pt = (float(doc.height()) * 72.0) / resolution
+        return self._format_svg_number(width_pt), self._format_svg_number(height_pt)
+
+    def _format_svg_number(self, value: float) -> str:
+        return ("{:.6f}".format(value)).rstrip("0").rstrip(".")
 
     def _png_export_options(self):
         options = InfoObject()
