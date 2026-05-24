@@ -6,6 +6,7 @@ import importlib.util
 import sys
 import types
 from pathlib import Path
+import tomllib
 
 
 PLUGIN_ROOT = Path(__file__).resolve().parents[1] / "krita-plugin"
@@ -149,9 +150,11 @@ def test_log_path_uses_krita_folder(monkeypatch, tmp_path):
 
 def test_version_metadata_exists():
     version = _load_plugin_module("version")
+    pyproject = tomllib.loads((PLUGIN_ROOT.parent / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert version.VERSION
     assert version.BUILD
+    assert version.VERSION == pyproject["project"]["version"]
 
 
 def test_update_checker_compares_versions():

@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 
 from krita import InfoObject, Krita
 
 from .models import PngExportSettings, TextMapping
 from .text_replace import replace_text_shape
 from .logging_utils import log
+
+
+SVG_ROOT_RE = re.compile(r"<svg\b", re.IGNORECASE)
 
 
 class KritaTemplateExporter:
@@ -97,7 +101,9 @@ class KritaTemplateExporter:
                     + (mapping.shape_name or "<unnamed>")
                     + " using "
                     + label
-                    + " serialization."
+                    + " serialization (len="
+                    + str(len(svg))
+                    + ")."
                 )
             if matched:
                 raise RuntimeError("Krita did not add replacement text for layer: " + mapping.layer_name)
@@ -107,8 +113,10 @@ class KritaTemplateExporter:
     def _shape_svg_candidates(self, shape):
         seen: set[str] = set()
         variants = [
+            ("text mode preserved", (False, False)),
             ("styled text", (True, False)),
             ("default", ()),
+            ("styled default", (True, True)),
         ]
         for label, args in variants:
             try:
@@ -118,10 +126,26 @@ class KritaTemplateExporter:
             except Exception as exc:
                 log("Could not serialize shape SVG with " + label + ": " + str(exc))
                 continue
-            if not svg or svg in seen:
-                continue
-            seen.add(svg)
-            yield label, svg
+            for candidate_label, candidate_svg in self._normalize_svg_candidates(label, svg):
+                if not candidate_svg or candidate_svg in seen:
+                    continue
+                seen.add(candidate_svg)
+                yield candidate_label, candidate_svg
+
+    def _normalize_svg_candidates(self, label: str, svg: str):
+        yield label, svg
+        if SVG_ROOT_RE.search(svg):
+            return
+        wrapped = (
+            '<svg xmlns="http://www.w3.org/2000/svg" '
+            'xmlns:xlink="http://www.w3.org/1999/xlink" '
+            'xmlns:krita="http://krita.org/namespaces/svg/krita" '
+            'xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd">'
+            '<defs/>'
+            + svg
+            + '</svg>'
+        )
+        yield label + " wrapped", wrapped
 
     def _png_export_options(self):
         options = InfoObject()
