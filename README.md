@@ -176,3 +176,9 @@ PRs are welcome. Please:
 ## 📄 License
 
 MIT © saitatter
+
+---
+
+## Support
+
+If Thumbforge is useful to you, you can support ongoing development on [Ko-fi](https://ko-fi.com/saitatter).
