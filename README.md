@@ -181,4 +181,6 @@ MIT © saitatter
 
 ## Support
 
-If Thumbforge is useful to you, you can support ongoing development on [Ko-fi](https://ko-fi.com/saitatter).
+If Thumbforge is useful to you, you can support ongoing development on Ko-fi:
+
+[![Support me on Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/saitatter)
